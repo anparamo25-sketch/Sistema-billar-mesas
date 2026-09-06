@@ -19,12 +19,18 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.24.5'
-          channel: 'stable'
+          channel: stable
           cache: true
 
-      - name: Generar estructura Android
-        run: flutter create --project-name=billar_control_pro --platforms=android .
-
+      - name: Crear proyecto Android
+        run: |
+          flutter create --project-name=billar_control_pro --platforms=android .
+          
+      - name: Verificar código de Billar
+        run: |
+          echo "Verificando main.dart..."
+          head -20 lib/main.dart
+          
       - name: Instalar dependencias
         run: flutter pub get
 
