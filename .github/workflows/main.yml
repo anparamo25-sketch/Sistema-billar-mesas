@@ -22,23 +22,34 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Crear proyecto Android
+      - name: Guardar código de Billar
         run: |
-          flutter create --project-name=billar_control_pro --platforms=android .
-          
-      - name: Verificar código de Billar
+          mkdir -p /tmp/billar
+          cp lib/main.dart /tmp/billar/main.dart
+          cp pubspec.yaml /tmp/billar/pubspec.yaml
+
+      - name: Crear estructura Android
         run: |
-          echo "Verificando main.dart..."
-          head -20 lib/main.dart
-          
+          flutter create \
+            --project-name=billar_control_pro \
+            --platforms=android \
+            /tmp/billar_app
+
+      - name: Colocar código de Billar
+        run: |
+          cp /tmp/billar/main.dart /tmp/billar_app/lib/main.dart
+          cp /tmp/billar/pubspec.yaml /tmp/billar_app/pubspec.yaml
+
       - name: Instalar dependencias
+        working-directory: /tmp/billar_app
         run: flutter pub get
 
       - name: Compilar APK
+        working-directory: /tmp/billar_app
         run: flutter build apk --release
 
       - name: Guardar APK
         uses: actions/upload-artifact@v4
         with:
           name: billar-control-pro-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
+          path: /tmp/billar_app/build/app/outputs/flutter-apk/app-release.apk
