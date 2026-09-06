@@ -23,7 +23,6 @@ void main() async {
 
 class Game {
   final int tableId;
-
   double rate;
   bool playing;
   DateTime? start;
@@ -56,22 +55,22 @@ class Game {
     };
   }
 
-  static Game fromJson(Map<String, dynamic> j) {
+  static Game fromJson(Map<String, dynamic> json) {
     return Game(
-      tableId: (j['tableId'] as num).toInt(),
-      rate: (j['rate'] as num).toDouble(),
-      playing: j['playing'] == true,
-      start: j['start'] == null
+      tableId: (json['tableId'] as num?)?.toInt() ?? 1,
+      rate: (json['rate'] as num?)?.toDouble() ?? 100,
+      playing: json['playing'] == true,
+      start: json['start'] == null
           ? null
-          : DateTime.parse(j['start'].toString()),
-      end: j['end'] == null
+          : DateTime.tryParse(json['start'].toString()),
+      end: json['end'] == null
           ? null
-          : DateTime.parse(j['end'].toString()),
+          : DateTime.tryParse(json['end'].toString()),
       elapsedSeconds:
-          (j['elapsedSeconds'] as num?)?.toInt() ??
-          ((j['elapsedMinutes'] as num?)?.toInt() ?? 0) * 60,
-      total: (j['total'] as num?)?.toDouble() ?? 0,
-      finalized: j['finalized'] == true,
+          (json['elapsedSeconds'] as num?)?.toInt() ??
+          ((json['elapsedMinutes'] as num?)?.toInt() ?? 0) * 60,
+      total: (json['total'] as num?)?.toDouble() ?? 0,
+      finalized: json['finalized'] == true,
     );
   }
 }
@@ -98,24 +97,18 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  final List<Game> games = List.generate(
-    tableCount,
-    (i) => Game(
-      tableId: i + 1,
-      rate: defaultRates[i],
-    ),
-  );
+  late List<Game> games;
 
   final List<Map<String, dynamic>> history = [];
 
   final Map<WebSocket, int> clients = {};
   final Map<int, WebSocket> tableClients = {};
 
-  Timer? ticker;
-  Timer? reconnectTimer;
-
   HttpServer? server;
   WebSocket? tableSocket;
+
+  Timer? ticker;
+  Timer? reconnectTimer;
 
   String mode = 'unset';
   int selectedTable = 1;
@@ -128,11 +121,19 @@ class _HomePageState extends State<HomePage> {
 
   String connectionMessage = '';
 
-  bool _loading = true;
+  bool loading = true;
 
   @override
   void initState() {
     super.initState();
+
+    games = List.generate(
+      tableCount,
+      (index) => Game(
+        tableId: index + 1,
+        rate: defaultRates[index],
+      ),
+    );
 
     _load();
 
@@ -176,26 +177,31 @@ class _HomePageState extends State<HomePage> {
     centralIp = prefs.getString('centralIp') ?? '';
     adminPin = prefs.getString('adminPin') ?? defaultAdminPin;
 
+    if (selectedTable < 1 || selectedTable > tableCount) {
+      selectedTable = 1;
+    }
+
     final rawGames = prefs.getString('games');
 
     if (rawGames != null) {
       try {
-        final decoded = jsonDecode(rawGames) as List;
+        final decoded = jsonDecode(rawGames);
 
-        final savedGames = decoded
-            .map(
-              (x) => Game.fromJson(
-                Map<String, dynamic>.from(x as Map),
-              ),
-            )
-            .toList();
+        if (decoded is List) {
+          for (final item in decoded) {
+            if (item is Map) {
+              final game = Game.fromJson(
+                Map<String, dynamic>.from(item),
+              );
 
-        for (final game in savedGames) {
-          if (game.tableId >= 1 && game.tableId <= tableCount) {
-            _copyGame(
-              games[game.tableId - 1],
-              game,
-            );
+              if (game.tableId >= 1 &&
+                  game.tableId <= tableCount) {
+                _copyGame(
+                  games[game.tableId - 1],
+                  game,
+                );
+              }
+            }
           }
         }
       } catch (_) {}
@@ -205,27 +211,25 @@ class _HomePageState extends State<HomePage> {
 
     if (rawHistory != null) {
       try {
-        final decoded = jsonDecode(rawHistory) as List;
+        final decoded = jsonDecode(rawHistory);
 
-        history.addAll(
-          decoded.map(
-            (x) => Map<String, dynamic>.from(x as Map),
-          ),
-        );
+        if (decoded is List) {
+          for (final item in decoded) {
+            if (item is Map) {
+              history.add(
+                Map<String, dynamic>.from(item),
+              );
+            }
+          }
+        }
       } catch (_) {}
     }
 
-    if (selectedTable < 1 || selectedTable > tableCount) {
-      selectedTable = 1;
-    }
-
-    _loading = false;
+    loading = false;
 
     if (mode == 'central') {
       await _startServer();
-    }
-
-    if (mode == 'mesa') {
+    } else if (mode == 'mesa') {
       await _connectToCentral();
     }
 
@@ -251,7 +255,7 @@ class _HomePageState extends State<HomePage> {
     await prefs.setString(
       'games',
       jsonEncode(
-        games.map((g) => g.toJson()).toList(),
+        games.map((game) => game.toJson()).toList(),
       ),
     );
 
@@ -317,8 +321,8 @@ class _HomePageState extends State<HomePage> {
         type: InternetAddressType.IPv4,
       );
 
-      for (final interfaceItem in interfaces) {
-        for (final address in interfaceItem.addresses) {
+      for (final networkInterface in interfaces) {
+        for (final address in networkInterface.addresses) {
           if (!address.isLoopback &&
               address.type == InternetAddressType.IPv4) {
             return address.address;
@@ -419,40 +423,45 @@ class _HomePageState extends State<HomePage> {
         return;
       }
 
-      final message = Map<String, dynamic>.from(decoded);
+      final message =
+          Map<String, dynamic>.from(decoded);
 
-      if (message['type'] == 'register') {
-        final tableValue = message['tableId'];
-
-        if (tableValue is! num) {
-          socket.close();
-          return;
-        }
-
-        final table = tableValue.toInt();
-
-        if (table < 1 || table > tableCount) {
-          socket.close();
-          return;
-        }
-
-        final previous = tableClients[table];
-
-        if (previous != null &&
-            !identical(previous, socket)) {
-          try {
-            previous.close();
-          } catch (_) {}
-        }
-
-        clients[socket] = table;
-        tableClients[table] = socket;
-
-        _sendTableState(
-          socket,
-          table,
-        );
+      if (message['type'] != 'register') {
+        return;
       }
+
+      final value = message['tableId'];
+
+      if (value is! num) {
+        socket.close();
+        return;
+      }
+
+      final tableId = value.toInt();
+
+      if (tableId < 1 ||
+          tableId > tableCount) {
+        socket.close();
+        return;
+      }
+
+      final previous =
+          tableClients[tableId];
+
+      if (previous != null &&
+          !identical(previous, socket)) {
+        try {
+          previous.close();
+        } catch (_) {}
+      }
+
+      clients[socket] = tableId;
+      tableClients[tableId] = socket;
+
+      _sendTableState(
+        socket,
+        tableId,
+      );
     } catch (_) {}
   }
 
@@ -460,7 +469,8 @@ class _HomePageState extends State<HomePage> {
     WebSocket socket,
     int tableId,
   ) {
-    if (tableId < 1 || tableId > tableCount) {
+    if (tableId < 1 ||
+        tableId > tableCount) {
       return;
     }
 
@@ -475,9 +485,14 @@ class _HomePageState extends State<HomePage> {
   }
 
   // PRIVACIDAD:
-  // Cada tablet solamente recibe el estado correspondiente
-  // a la mesa que tiene registrada.
+  // Cada tablet recibe solamente los datos
+  // de su propia mesa.
   void _broadcastTable(int tableId) {
+    if (tableId < 1 ||
+        tableId > tableCount) {
+      return;
+    }
+
     final socket = tableClients[tableId];
 
     if (socket != null) {
@@ -493,12 +508,13 @@ class _HomePageState extends State<HomePage> {
       return;
     }
 
-    game.playing = true;
-    game.start = DateTime.now();
-    game.end = null;
-    game.elapsedSeconds = 0;
-    game.total = 0;
-    game.finalized = false;
+    game
+      ..playing = true
+      ..start = DateTime.now()
+      ..end = null
+      ..elapsedSeconds = 0
+      ..total = 0
+      ..finalized = false;
 
     await _save();
 
@@ -510,15 +526,19 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> finishGame(Game game) async {
-    if (!game.playing || game.start == null) {
+    if (!game.playing ||
+        game.start == null) {
       return;
     }
 
-    game.playing = false;
-    game.end = DateTime.now();
+    game
+      ..playing = false
+      ..end = DateTime.now();
 
     game.elapsedSeconds =
-        game.end!.difference(game.start!).inSeconds;
+        game.end!.difference(
+          game.start!,
+        ).inSeconds;
 
     game.total = double.parse(
       (
@@ -537,7 +557,8 @@ class _HomePageState extends State<HomePage> {
         'start': game.start!.toIso8601String(),
         'end': game.end!.toIso8601String(),
         'seconds': game.elapsedSeconds,
-        'minutes': (game.elapsedSeconds / 60).ceil(),
+        'minutes':
+            (game.elapsedSeconds / 60).ceil(),
         'rate': game.rate,
         'total': game.total,
       },
@@ -545,8 +566,6 @@ class _HomePageState extends State<HomePage> {
 
     await _save();
 
-    // Solo el central y la tablet de ESTA mesa
-    // reciben el resultado final.
     _broadcastTable(game.tableId);
 
     if (mounted) {
@@ -616,29 +635,42 @@ class _HomePageState extends State<HomePage> {
             }
 
             final message =
-                Map<String, dynamic>.from(decoded);
+                Map<String, dynamic>.from(
+              decoded,
+            );
 
-            if (message['type'] == 'table_state') {
-              final gameData =
-                  Map<String, dynamic>.from(
-                message['game'] as Map,
-              );
+            if (message['type'] !=
+                'table_state') {
+              return;
+            }
 
-              final game = Game.fromJson(gameData);
+            final rawGame =
+                message['game'];
 
-              // Nunca mostrar otra mesa.
-              if (game.tableId != selectedTable) {
-                return;
-              }
+            if (rawGame is! Map) {
+              return;
+            }
 
-              _copyGame(
-                games[selectedTable - 1],
-                game,
-              );
+            final game = Game.fromJson(
+              Map<String, dynamic>.from(
+                rawGame,
+              ),
+            );
 
-              if (mounted) {
-                setState(() {});
-              }
+            // SEGURIDAD:
+            // Nunca mostrar información de otra mesa.
+            if (game.tableId !=
+                selectedTable) {
+              return;
+            }
+
+            _copyGame(
+              games[selectedTable - 1],
+              game,
+            );
+
+            if (mounted) {
+              setState(() {});
             }
           } catch (_) {}
         },
@@ -656,7 +688,8 @@ class _HomePageState extends State<HomePage> {
       );
 
       connected = true;
-      connectionMessage = 'Conectada al central';
+      connectionMessage =
+          'Conectada al central';
     } catch (_) {
       _scheduleReconnect();
     }
@@ -668,7 +701,8 @@ class _HomePageState extends State<HomePage> {
 
   void _scheduleReconnect() {
     connected = false;
-    connectionMessage = 'Reintentando conexión...';
+    connectionMessage =
+        'Reintentando conexión...';
 
     reconnectTimer?.cancel();
 
@@ -683,35 +717,44 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<bool> _pinDialog({
-    String title = 'PIN de administrador',
+    String title =
+        'PIN de administrador',
   }) async {
-    final controller = TextEditingController();
+    final controller =
+        TextEditingController();
 
     final result = await showDialog<bool>(
       context: context,
-      builder: (_) {
+      builder: (dialogContext) {
         return AlertDialog(
           title: Text(title),
           content: TextField(
             controller: controller,
             obscureText: true,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(
+            keyboardType:
+                TextInputType.number,
+            decoration:
+                const InputDecoration(
               labelText: 'PIN',
             ),
           ),
           actions: [
             TextButton(
               onPressed: () {
-                Navigator.pop(context, false);
+                Navigator.pop(
+                  dialogContext,
+                  false,
+                );
               },
-              child: const Text('Cancelar'),
+              child:
+                  const Text('Cancelar'),
             ),
             FilledButton(
               onPressed: () {
                 Navigator.pop(
-                  context,
-                  controller.text == adminPin,
+                  dialogContext,
+                  controller.text ==
+                      adminPin,
                 );
               },
               child: const Text('Entrar'),
@@ -727,135 +770,129 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _setupWizard() async {
-    String newMode = mode == 'unset' ? 'central' : mode;
+    String newMode =
+        mode == 'unset'
+            ? 'central'
+            : mode;
+
     int newTable = selectedTable;
-    String ip = centralIp;
-    String pin = adminPin;
 
-    final ipController = TextEditingController(
-      text: ip,
+    String newIp = centralIp;
+
+    String newPin = adminPin;
+
+    final ipController =
+        TextEditingController(
+      text: newIp,
     );
 
-    final pinController = TextEditingController(
-      text: pin,
+    final pinController =
+        TextEditingController(
+      text: newPin,
     );
 
-    await showDialog(
+    await showDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder: (_) {
+      builder: (dialogContext) {
         return StatefulBuilder(
-          builder: (ctx, setD) {
+          builder: (
+            builderContext,
+            setDialogState,
+          ) {
             return AlertDialog(
               title: const Text(
                 'Configuración inicial',
               ),
-              content: SingleChildScrollView(
+              content:
+                  SingleChildScrollView(
                 child: Column(
-                  mainAxisSize: MainAxisSize.min,
+                  mainAxisSize:
+                      MainAxisSize.min,
                   children: [
                     const Text(
-                      'Instala el mismo APK en las 6 tablets y selecciona el rol de cada una.',
+                      'Configura esta tablet como CENTRAL o como TABLET DE MESA.',
                     ),
-                    const SizedBox(height: 18),
-                    DropdownButtonFormField<String>(
+                    const SizedBox(
+                      height: 20,
+                    ),
+                    DropdownButtonFormField<
+                        String>(
                       value: newMode,
+                      decoration:
+                          const InputDecoration(
+                        labelText: 'Tipo de dispositivo',
+                      ),
                       items: const [
                         DropdownMenuItem(
                           value: 'central',
-                          child: Text('CENTRAL'),
+                          child:
+                              Text('CENTRAL'),
                         ),
                         DropdownMenuItem(
                           value: 'mesa',
-                          child: Text('TABLET DE MESA'),
+                          child: Text(
+                            'TABLET DE MESA',
+                          ),
                         ),
                       ],
-                      onChanged: (value) {
-                        if (value != null) {
-                          setD(() {
-                            newMode = value;
-                          });
+                      onChanged:
+                          (value) {
+                        if (value ==
+                            null) {
+                          return;
                         }
+
+                        setDialogState(() {
+                          newMode =
+                              value;
+                        });
                       },
                     ),
-                    if (newMode == 'mesa') ...[
-                      const SizedBox(height: 12),
-                      DropdownButtonFormField<int>(
+                    if (newMode ==
+                        'mesa') ...[
+                      const SizedBox(
+                        height: 14,
+                      ),
+                      DropdownButtonFormField<
+                          int>(
                         value: newTable,
-                        items: List.generate(
+                        decoration:
+                            const InputDecoration(
+                          labelText:
+                              'Número de mesa',
+                        ),
+                        items:
+                            List.generate(
                           tableCount,
-                          (i) {
-                            return DropdownMenuItem(
-                              value: i + 1,
-                              child: Text(
-                                'Mesa ${i + 1}',
+                          (index) {
+                            return DropdownMenuItem<
+                                int>(
+                              value:
+                                  index + 1,
+                              child:
+                                  Text(
+                                'Mesa ${index + 1}',
                               ),
                             );
                           },
                         ),
-                        onChanged: (value) {
-                          if (value != null) {
-                            setD(() {
-                              newTable = value;
-                            });
+                        onChanged:
+                            (value) {
+                          if (value ==
+                              null) {
+                            return;
                           }
+
+                          setDialogState(() {
+                            newTable =
+                                value;
+                          });
                         },
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(
+                        height: 14,
+                      ),
                       TextField(
-                        controller: ipController,
-                        onChanged: (value) {
-                          ip = value;
-                        },
-                        keyboardType:
-                            TextInputType.number,
-                        decoration:
-                            const InputDecoration(
-                          labelText:
-                              'IP de la tablet CENTRAL',
-                          hintText:
-                              'Ej. 192.168.1.20',
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: pinController,
-                      obscureText: true,
-                      onChanged: (value) {
-                        pin = value;
-                      },
-                      keyboardType:
-                          TextInputType.number,
-                      decoration:
-                          const InputDecoration(
-                        labelText:
-                            'PIN administrador',
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              actions: [
-                FilledButton(
-                  onPressed: () async {
-                    final prefs =
-                        await SharedPreferences
-                            .getInstance();
-
-                    final finalPin =
-                        pin.trim().isEmpty
-                            ? defaultAdminPin
-                            : pin.trim();
-
-                    await prefs.setString(
-                      'mode',
-                      newMode,
-                    );
-
-                    await prefs.setInt(
-                      'table',
-                      newTable,
-                    );
-                      }
-                  }
+                        }
+                        }
