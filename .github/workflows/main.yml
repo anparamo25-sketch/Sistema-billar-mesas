@@ -1,0 +1,38 @@
+name: Build Billar Control Pro APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Descargar proyecto
+        uses: actions/checkout@v4
+
+      - name: Configurar Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.5'
+          channel: 'stable'
+          cache: true
+
+      - name: Generar estructura Android
+        run: flutter create --platforms=android .
+
+      - name: Instalar dependencias
+        run: flutter pub get
+
+      - name: Compilar APK
+        run: flutter build apk --release
+
+      - name: Guardar APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: billar-control-pro-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
