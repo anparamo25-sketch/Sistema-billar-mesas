@@ -23,7 +23,7 @@ jobs:
           cache: true
 
       - name: Generar estructura Android
-        run: flutter create --platforms=android .
+        run: flutter create --project-name=billar_control_pro --platforms=android .
 
       - name: Instalar dependencias
         run: flutter pub get
