@@ -40,6 +40,10 @@ jobs:
           cp /tmp/billar/main.dart /tmp/billar_app/lib/main.dart
           cp /tmp/billar/pubspec.yaml /tmp/billar_app/pubspec.yaml
 
+      - name: Aplicar correcciones de conexión LAN
+        run: |
+          python3 tools/patch_network.py
+
       - name: Configurar red local Android
         working-directory: /tmp/billar_app
         run: |
@@ -49,7 +53,8 @@ jobs:
           s = p.read_text()
           if 'android.permission.INTERNET' not in s:
               s = s.replace('<manifest xmlns:android="http://schemas.android.com/apk/res/android">', '<manifest xmlns:android="http://schemas.android.com/apk/res/android">\n    <uses-permission android:name="android.permission.INTERNET" />')
-          s = s.replace('<application', '<application android:usesCleartextTraffic="true"', 1)
+          if 'android:usesCleartextTraffic=' not in s:
+              s = s.replace('<application', '<application android:usesCleartextTraffic="true"', 1)
           p.write_text(s)
           PY
 
