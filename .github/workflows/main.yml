@@ -53,6 +53,10 @@ jobs:
           p.write_text(s)
           PY
 
+      - name: Eliminar prueba generada incompatible
+        working-directory: /tmp/billar_app
+        run: rm -f test/widget_test.dart
+
       - name: Instalar dependencias
         working-directory: /tmp/billar_app
         run: flutter pub get
