@@ -66,16 +66,21 @@ jobs:
           set -e
           grep -F "const rates = <double>[120, 120, 100, 100, 70];" lib/main.dart
           grep -F "const defaultPin = '1234';" lib/main.dart
-          grep -F "void main()" lib/main.dart
+          grep -F "const currentBuild = 122;" lib/main.dart
+          grep -F "const currentVersion = '1.2.2';" lib/main.dart
+          grep -F "updateManifestUrl" lib/main.dart
+          grep -F "Buscar actualizaciones" lib/main.dart
           grep -F "MethodChannel('billar_control/tv')" lib/main.dart
           grep -F 'billar_control/tv' android/app/src/main/kotlin/com/billaresdonmiguel/billares_don_miguel/MainActivity.kt
           grep -F '"startTv"' android/app/src/main/kotlin/com/billaresdonmiguel/billares_don_miguel/MainActivity.kt
           grep -F '"updateTv"' android/app/src/main/kotlin/com/billaresdonmiguel/billares_don_miguel/MainActivity.kt
           grep -F 'container.post' android/app/src/main/kotlin/com/billaresdonmiguel/billares_don_miguel/MainActivity.kt
+          grep -F 'version: 1.2.2+122' pubspec.yaml
+          grep -F '"version": "1.2.2+122"' update.json
           echo "VALIDACION OK"
 
       - name: Compilar APK release 122
-        run: flutter build apk --release --no-shrink --build-name=1.2.1 --build-number=122
+        run: flutter build apk --release --no-shrink --build-name=1.2.2 --build-number=122
 
       - name: Preparar APK público de actualización
         run: |
@@ -88,7 +93,7 @@ jobs:
       - name: Subir artefacto
         uses: actions/upload-artifact@v4
         with:
-          name: Billares-Don-Miguel-Update-v1.2.1-build122-run${{ github.run_number }}
+          name: Billares-Don-Miguel-Update-v1.2.2-build122-run${{ github.run_number }}
           path: dist/*
           if-no-files-found: error
           retention-days: 30
@@ -96,7 +101,7 @@ jobs:
       - name: Publicar release público
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.2.1-build122-run${{ github.run_number }}
-          name: Billares Don Miguel v1.2.1 (build 122)
+          tag_name: v1.2.2-build122-run${{ github.run_number }}
+          name: Billares Don Miguel v1.2.2 (build 122)
           generate_release_notes: true
           files: dist/Billares-Don-Miguel-latest.apk
