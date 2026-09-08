@@ -51,6 +51,8 @@ class _SetupScreenState extends State<SetupScreen> {
   ])))));
 }
 """
+    # Seis contenedores: Column, Padding, Card, ScrollView, Center y Scaffold.
+    s = s.replace("  ])))));\n}\n", "  ]))))));\n}\n", 1)
 
 p.write_text(s)
 print('Acceso administrador y TV externa por segunda pantalla aplicados.')
