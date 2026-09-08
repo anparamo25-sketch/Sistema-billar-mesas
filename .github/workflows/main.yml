@@ -30,6 +30,19 @@ jobs:
           grep -F 'billar_control/tv' android/app/src/main/kotlin/com/billaresdonmiguel/billares_don_miguel/MainActivity.kt
           grep -F 'container.post' android/app/src/main/kotlin/com/billaresdonmiguel/billares_don_miguel/MainActivity.kt
 
+      - name: Generar estructura Android y preservar TV
+        run: |
+          set -e
+          mkdir -p /tmp/billares-tv
+          cp android/app/src/main/kotlin/com/billaresdonmiguel/billares_don_miguel/MainActivity.kt /tmp/billares-tv/MainActivity.kt
+          flutter create --platforms=android --org com.billaresdonmiguel .
+          mkdir -p android/app/src/main/kotlin/com/billaresdonmiguel/billares_don_miguel
+          cp /tmp/billares-tv/MainActivity.kt android/app/src/main/kotlin/com/billaresdonmiguel/billares_don_miguel/MainActivity.kt
+          test -f android/app/build.gradle.kts
+          test -f android/app/src/main/AndroidManifest.xml
+          grep -F 'billar_control/tv' android/app/src/main/kotlin/com/billaresdonmiguel/billares_don_miguel/MainActivity.kt
+          grep -F 'container.post' android/app/src/main/kotlin/com/billaresdonmiguel/billares_don_miguel/MainActivity.kt
+
       - name: Configurar Android
         run: |
           set -e
