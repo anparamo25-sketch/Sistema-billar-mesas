@@ -40,9 +40,13 @@ jobs:
           cp /tmp/billar/main.dart /tmp/billar_app/lib/main.dart
           cp /tmp/billar/pubspec.yaml /tmp/billar_app/pubspec.yaml
 
-      - name: Aplicar correcciones de conexión LAN
+      - name: Aplicar correcciones de conexion LAN
         run: |
           python3 tools/patch_network.py
+
+      - name: Aplicar mejoras Billares Don Miguel
+        run: |
+          python3 tools/patch_billar_don_miguel.py
 
       - name: Configurar red local Android
         working-directory: /tmp/billar_app
@@ -66,7 +70,7 @@ jobs:
         working-directory: /tmp/billar_app
         run: flutter pub get
 
-      - name: Analizar código
+      - name: Analizar codigo
         working-directory: /tmp/billar_app
         run: flutter analyze --no-fatal-infos
 
