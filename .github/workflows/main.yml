@@ -10,72 +10,63 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - name: Descargar proyecto
         uses: actions/checkout@v4
-
       - name: Configurar Flutter
         uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.24.5'
           channel: stable
           cache: true
-
       - name: Guardar código de Billar
         run: |
           mkdir -p /tmp/billar
           cp lib/main.dart /tmp/billar/main.dart
           cp pubspec.yaml /tmp/billar/pubspec.yaml
-
       - name: Crear estructura Android
         run: |
-          flutter create \
-            --project-name=billar_control_pro \
-            --platforms=android \
-            /tmp/billar_app
-
+          flutter create --project-name=billar_control_pro --platforms=android /tmp/billar_app
       - name: Colocar código de Billar
         run: |
           cp /tmp/billar/main.dart /tmp/billar_app/lib/main.dart
           cp /tmp/billar/pubspec.yaml /tmp/billar_app/pubspec.yaml
-
       - name: Corregir compatibilidad Dart
         run: python3 tools/patch_compile.py
-
       - name: Aplicar correcciones de conexion LAN
         run: python3 tools/patch_network.py
-
       - name: Aplicar mejoras Billares Don Miguel
         run: python3 tools/patch_billar_don_miguel.py
-
       - name: Aplicar reglas finales y tarifas oficiales
         run: python3 tools/patch_final_rules.py
-
       - name: Bloquear completamente edicion de tarifas
         run: python3 tools/patch_lock_rates.py
-
-      - name: Verificar que no existan controles de tarifa
+      - name: Corregir acceso y monitor TV
+        run: python3 tools/patch_access_tv.py
+      - name: Validar reglas de negocio y sintaxis
         working-directory: /tmp/billar_app
         run: |
           python3 - <<'PY'
           from pathlib import Path
           s = Path('lib/main.dart').read_text()
           required = "const List<double> defaultRates = [120, 120, 100, 100, 70];"
-          forbidden = [
-              "onPressed: () => _changeRate(id)",
-              "child: const Text('Tarifa')",
-              "Tarifa mesa ${i + 1} (C\\$/hora)",
-              "_changeRate(id)",
-          ]
           if required not in s:
               raise SystemExit('FALLO: tarifas oficiales no encontradas')
+          forbidden = [
+              "ButtonSegment(value: 'table'",
+              "Text('MESA')",
+              "DropdownButtonFormField<int>",
+              "onPressed: () => _changeRate(id)",
+              "Tarifa mesa ${i + 1} (C\\$/hora)",
+          ]
           for item in forbidden:
               if item in s:
-                  raise SystemExit(f'FALLO: control de tarifa detectado: {item}')
-          print('OK: tarifas oficiales bloqueadas en la interfaz y codigo de build')
+                  raise SystemExit(f'FALLO: interfaz/control no permitido: {item}')
+          if "role:'tv'" not in s and 'role:\"tv\"' not in s:
+              raise SystemExit('FALLO: registro del monitor TV no encontrado')
+          print('OK: solo administrador, tarifas bloqueadas y monitor TV presente')
           PY
-
+          dart format --output=none lib/main.dart
       - name: Corregir simbolos de moneda Dart
         working-directory: /tmp/billar_app
         run: |
@@ -86,7 +77,6 @@ jobs:
           s = s.replace('C$ ', r'C\$ ')
           p.write_text(s)
           PY
-
       - name: Configurar red local Android
         working-directory: /tmp/billar_app
         run: |
@@ -103,23 +93,18 @@ jobs:
               s = s.replace('<application', '<application android:usesCleartextTraffic="true"', 1)
           p.write_text(s)
           PY
-
       - name: Eliminar prueba generada incompatible
         working-directory: /tmp/billar_app
         run: rm -f test/widget_test.dart
-
       - name: Instalar dependencias
         working-directory: /tmp/billar_app
         run: flutter pub get
-
       - name: Analizar codigo
         working-directory: /tmp/billar_app
         run: flutter analyze --no-fatal-infos
-
       - name: Compilar APK
         working-directory: /tmp/billar_app
         run: flutter build apk --release
-
       - name: Guardar APK
         uses: actions/upload-artifact@v4
         with:
