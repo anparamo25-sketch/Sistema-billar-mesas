@@ -2,6 +2,9 @@ name: Build Billar Control Pro SAFE
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
 
 jobs:
   build:
