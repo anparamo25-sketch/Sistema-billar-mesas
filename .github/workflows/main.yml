@@ -45,6 +45,8 @@ jobs:
         run: python3 tools/patch_lock_rates.py
       - name: Corregir acceso y monitor TV
         run: python3 tools/patch_access_tv.py
+      - name: Blindar arranque de la aplicacion
+        run: python3 tools/patch_startup_safety.py
       - name: Agregar comprobacion de actualizaciones
         run: python3 tools/patch_auto_update.py
       - name: Corregir simbolos de moneda Dart
