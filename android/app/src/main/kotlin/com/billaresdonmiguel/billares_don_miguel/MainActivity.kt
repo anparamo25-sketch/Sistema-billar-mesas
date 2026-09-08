@@ -77,7 +77,7 @@ class MainActivity : FlutterActivity() {
                     val active = table["active"] == true
                     val total = (table["total"] as? Number)?.toDouble() ?: 0.0
                     val row = TextView(context).apply {
-                        text = "MESA $id   ${if (active) "OCUPADA" else "DISPONIBLE"}   C$ ${String.format(java.util.Locale.US, "%.2f", total)}"
+                        text = "MESA $id   ${if (active) "OCUPADA" else "DISPONIBLE"}   C\$ ${String.format(java.util.Locale.US, "%.2f", total)}"
                         textSize = 22f
                         setTextColor(0xFFFFFFFF.toInt())
                         setPadding(0, 14, 0, 14)
