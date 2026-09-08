@@ -1,7 +1,7 @@
 name: billar_control_pro
 description: Sistema de control para billar con una central y cinco mesas.
 publish_to: "none"
-version: 2.0.0+46
+version: 2.1.0+47
 
 environment:
   sdk: ">=3.4.0 <4.0.0"
@@ -10,6 +10,7 @@ dependencies:
   flutter:
     sdk: flutter
   shared_preferences: ^2.5.3
+  url_launcher: ^6.3.2
 
 dev_dependencies:
   flutter_test:
