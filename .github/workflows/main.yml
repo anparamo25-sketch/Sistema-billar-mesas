@@ -51,6 +51,44 @@ jobs:
           manifest.write_text(s)
           PY
 
+      - name: Restaurar interfaz, estados y textos de Billares Don Miguel
+        run: |
+          set -e
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('lib/main.dart')
+          s = p.read_text()
+          replacements = {
+              "title: 'Billar Control Pro'": "title: 'Billares-Don-Miguel'",
+              "..write('Billar Control Pro')": "..write('Billares-Don-Miguel')",
+              "title: const Text('BILLAR CONTROL PRO')": "title: const Text('BILLARES DON MIGUEL')",
+              "Game(this.id, {this.active = false, this.start, this.end, this.total = 0});": "Game(this.id, {this.active = false, this.pending = false, this.start, this.end, this.total = 0});",
+              "bool active;\n  DateTime? start, end;": "bool active;\n  bool pending;\n  DateTime? start, end;",
+              "'active': active,\n        'start'": "'active': active,\n        'pending': pending,\n        'start'",
+              "active: j['active'] == true,\n      start": "active: j['active'] == true,\n      pending: j['pending'] == true,\n      start",
+              "g.active = true;\n      g.start": "g.active = true;\n      g.pending = false;\n      g.start",
+              "g.active = false;\n      g.end = DateTime.now();": "g.active = false;\n      g.pending = true;\n      g.end = DateTime.now();",
+              "  Future<void> resetGame(int id) async {": "  Future<void> payGame(int id) async {\n    if (!unlocked) return;\n    final g = games[id - 1];\n    if (!g.pending) return;\n    setState(() => games[id - 1] = Game(id));\n    await save();\n    sendTv();\n  }\n\n  Future<void> resetGame(int id) async {",
+              "Widget card(Game g) => Card(\n        child:": "Widget card(Game g) => Card(\n        color: g.pending\n            ? Colors.amber.shade700\n            : g.active\n                ? Colors.red.shade700\n                : Colors.green.shade700,\n        child:",
+              "Chip(label: Text(g.active ? 'OCUPADA' : 'DISPONIBLE'))": "Chip(label: Text(g.pending ? 'PENDIENTE DE PAGO' : g.active ? 'EN JUEGO' : 'DISPONIBLE'))",
+              "onPressed: g.active ? null : () => startGame(g.id),": "onPressed: g.active || g.pending ? null : () => startGame(g.id),",
+              "onPressed: g.active ? () => finishGame(g.id) : null,": "onPressed: g.active ? () => finishGame(g.id) : g.pending ? () => payGame(g.id) : null,",
+              "label: const Text('Finalizar'),": "label: Text(g.pending ? 'Cobrar' : 'Finalizar'),",
+          }
+          for a, b in replacements.items():
+              if a not in s:
+                  raise SystemExit(f'ERROR: patrón no encontrado: {a}')
+              s = s.replace(a, b, 1)
+          p.write_text(s)
+          PY
+          grep -F "Billares-Don-Miguel" lib/main.dart
+          grep -F "BILLARES DON MIGUEL" lib/main.dart
+          grep -F "PENDIENTE DE PAGO" lib/main.dart
+          grep -F "Colors.amber" lib/main.dart
+          grep -F "Colors.red" lib/main.dart
+          grep -F "Colors.green" lib/main.dart
+          echo "INTERFAZ OK"
+
       - name: Dependencias
         run: flutter pub get
 
@@ -70,6 +108,10 @@ jobs:
           grep -F "const currentVersion = '1.2.2';" lib/main.dart
           grep -F "updateManifestUrl" lib/main.dart
           grep -F "Buscar actualizaciones" lib/main.dart
+          grep -F "PENDIENTE DE PAGO" lib/main.dart
+          grep -F "Colors.amber" lib/main.dart
+          grep -F "Colors.red" lib/main.dart
+          grep -F "Colors.green" lib/main.dart
           grep -F "MethodChannel('billar_control/tv')" lib/main.dart
           grep -F 'billar_control/tv' android/app/src/main/kotlin/com/billaresdonmiguel/billares_don_miguel/MainActivity.kt
           grep -F '"startTv"' android/app/src/main/kotlin/com/billaresdonmiguel/billares_don_miguel/MainActivity.kt
@@ -77,6 +119,7 @@ jobs:
           grep -F 'container.post' android/app/src/main/kotlin/com/billaresdonmiguel/billares_don_miguel/MainActivity.kt
           grep -F 'version: 1.2.2+122' pubspec.yaml
           grep -F '"version": "1.2.2+122"' update.json
+          if grep -Fq 'Billar Control Pro' lib/main.dart; then echo 'ERROR: texto heredado'; exit 1; fi
           echo "VALIDACION OK"
 
       - name: Compilar APK release 122
