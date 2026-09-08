@@ -1,7 +1,7 @@
 name: billares_don_miguel
 description: Sistema de control de mesas de billar para Billares Don Miguel.
 publish_to: "none"
-version: 1.2.1+122
+version: 1.2.2+122
 
 environment:
   sdk: ">=3.7.0 <4.0.0"
