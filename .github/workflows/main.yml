@@ -45,10 +45,8 @@ jobs:
         run: python3 tools/patch_lock_rates.py
       - name: Corregir acceso y monitor TV
         run: python3 tools/patch_access_tv.py
-      - name: Blindar arranque de la aplicacion
-        run: python3 tools/patch_startup_safety.py
-      - name: Agregar comprobacion de actualizaciones
-        run: python3 tools/patch_auto_update.py
+      - name: Blindar estabilidad del arranque
+        run: python3 tools/patch_stability.py
       - name: Corregir simbolos de moneda Dart
         working-directory: /tmp/billar_app
         run: |
@@ -81,11 +79,9 @@ jobs:
                   raise SystemExit(f'FALLO: interfaz/control no permitido: {item}')
           if "MethodChannel('billar_control/tv')" not in s or "startTv" not in s:
               raise SystemExit('FALLO: enlace TV por pantalla externa no encontrado')
-          if "package:url_launcher/url_launcher.dart" not in s:
-              raise SystemExit('FALLO: comprobador de actualizaciones no agregado')
-          if "_checkForUpdates" not in s:
-              raise SystemExit('FALLO: comprobador de actualizaciones no encontrado')
-          print('OK: administrador, tarifas bloqueadas, TV externa y actualizaciones presentes')
+          if "package:url_launcher/url_launcher.dart" in s or "_checkForUpdates" in s:
+              raise SystemExit('FALLO: comprobador de actualizaciones no debe ejecutarse durante el arranque')
+          print('OK: administrador, tarifas bloqueadas, TV externa y arranque estable presentes')
           PY
           dart format --output=none lib/main.dart
       - name: Configurar red local Android
@@ -113,9 +109,9 @@ jobs:
       - name: Analizar codigo
         working-directory: /tmp/billar_app
         run: flutter analyze --no-fatal-infos
-      - name: Compilar APK
+      - name: Compilar APK estable sin shrink
         working-directory: /tmp/billar_app
-        run: flutter build apk --release
+        run: flutter build apk --release --no-shrink
       - name: Guardar APK
         uses: actions/upload-artifact@v4
         with:
