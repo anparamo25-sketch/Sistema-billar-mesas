@@ -63,7 +63,7 @@ class MainActivity : FlutterActivity() {
 
         fun updateTables(tables: List<Map<String, Any?>>) {
             if (!::container.isInitialized) return
-            runOnUiThread {
+            container.post {
                 container.removeAllViews()
                 val title = TextView(context).apply {
                     text = "BILLARES DON MIGUEL"
