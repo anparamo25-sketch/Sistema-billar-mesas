@@ -102,6 +102,147 @@ jobs:
           grep -F "Colors.green" lib/main.dart
           echo "INTERFAZ OK"
 
+      - name: Implementar TV por red sin cambiar la interfaz
+        run: |
+          set -e
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          p = Path('lib/main.dart')
+          s = p.read_text()
+
+          s = s.replace("  bool loading = true, unlocked = false, tvOn = false;", "  bool loading = true, unlocked = false, tvOn = false;\n  String tvUrl = '';", 1)
+
+          start_server = r'''  Future<void> startServer() async {
+    try {
+      server = await HttpServer.bind(InternetAddress.anyIPv4, port, shared: true);
+      server!.listen((r) async {
+        if (r.uri.path == '/state') {
+          r.response.headers.contentType = ContentType.json;
+          r.response.headers.set('Cache-Control', 'no-store');
+          r.response.write(jsonEncode({'tables': games.map((g) => g.toJson()).toList()}));
+          await r.response.close();
+          return;
+        }
+        if (r.uri.path == '/tv' || r.uri.path == '/') {
+          r.response.headers.contentType = ContentType.html;
+          r.response.headers.set('Cache-Control', 'no-store');
+          r.response.write(_tvHtml());
+          await r.response.close();
+          return;
+        }
+        if (WebSocketTransformer.isUpgradeRequest(r)) {
+          try {
+            final s = await WebSocketTransformer.upgrade(r);
+            s.listen((data) {
+              try {
+                final m = jsonDecode(data) as Map<String, dynamic>;
+                if (m['type'] == 'register') {
+                  final id = (m['tableId'] as num?)?.toInt() ?? 0;
+                  if (id >= 1 && id <= 5) {
+                    s.add(jsonEncode({
+                      'type': 'state',
+                      'tableId': id,
+                      'game': games[id - 1].toJson(),
+                    }));
+                  }
+                }
+              } catch (_) {}
+            });
+          } catch (_) {}
+          return;
+        }
+        r.response.statusCode = HttpStatus.notFound;
+        await r.response.close();
+      });
+    } catch (_) {}
+  }
+
+  String _tvHtml() => '''<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Billares Don Miguel</title><style>
+html,body{margin:0;background:#101010;color:#fff;font-family:Arial,sans-serif;height:100%;overflow:hidden}header{height:12vh;display:flex;align-items:center;justify-content:center;font-size:4vw;font-weight:800;letter-spacing:.08em}main{height:88vh;display:grid;grid-template-columns:repeat(5,1fr);gap:1.4vw;padding:1.2vw;box-sizing:border-box}.card{border-radius:1.2vw;padding:1.2vw;box-sizing:border-box;display:flex;flex-direction:column;justify-content:space-between;box-shadow:0 0 .7vw #000;font-size:1.55vw}.free{background:#16853d}.play{background:#b52323}.pending{background:#b8860b}.name{font-size:2.2vw;font-weight:800}.status{font-size:1.65vw;font-weight:700}.amount{font-size:2vw;font-weight:800}.small{font-size:1.25vw}.error{position:fixed;bottom:1vh;left:0;right:0;text-align:center;color:#aaa;font-size:1.1vw}
+</style></head><body><header>BILLARES DON MIGUEL</header><main id="tables"></main><div id="err" class="error"></div>
+<script>
+const money=n=>'C$ '+Number(n||0).toFixed(2);
+const pad=n=>String(n).padStart(2,'0');
+function time(v){if(!v)return'--:--';const d=new Date(v);return pad(d.getHours())+':'+pad(d.getMinutes());}
+function dur(g){if(!g.start)return'00:00:00';const a=new Date(g.start).getTime(),b=g.end?new Date(g.end).getTime():Date.now(),s=Math.max(0,Math.floor((b-a)/1000));return pad(Math.floor(s/3600))+':'+pad(Math.floor(s%3600/60))+':'+pad(s%60)}
+function draw(data){const root=document.getElementById('tables');root.innerHTML='';(data.tables||[]).forEach(g=>{const c=document.createElement('section');c.className='card '+(g.pending?'pending':g.active?'play':'free');const status=g.pending?'PENDIENTE DE PAGO':g.active?'EN JUEGO':'DISPONIBLE';c.innerHTML='<div><div class="name">MESA '+g.id+'</div><div class="status">'+status+'</div></div><div><div class="small">Inicio: '+time(g.start)+'</div><div class="small">Final: '+time(g.end)+'</div><div class="small">Tiempo: '+dur(g)+'</div><div class="amount">'+money(g.total)+'</div></div>';root.appendChild(c)})}
+async function refresh(){try{const r=await fetch('/state?x='+Date.now(),{cache:'no-store'});if(!r.ok)throw Error();draw(await r.json());document.getElementById('err').textContent='';}catch(e){document.getElementById('err').textContent='Esperando conexión con CENTRAL...'}}
+refresh();setInterval(refresh,1000);
+</script></body></html>''';
+'''
+
+          s2, n = re.subn(r"  Future<void> startServer\(\) async \{.*?\n  void updateTotals\(\) \{", start_server + "\n  void updateTotals() {", s, count=1, flags=re.S)
+          if n != 1:
+              raise SystemExit('ERROR: no se pudo reemplazar startServer')
+          s = s2
+
+          link_tv = r'''  Future<void> linkTv() async {
+    if (!unlocked) return;
+    try {
+      final interfaces = await NetworkInterface.list(
+        type: InternetAddressType.IPv4,
+        includeLoopback: false,
+      );
+      String? address;
+      for (final network in interfaces) {
+        for (final item in network.addresses) {
+          if (!item.isLoopback && item.address.isNotEmpty) {
+            address = item.address;
+            break;
+          }
+        }
+        if (address != null) break;
+      }
+      if (address == null) throw Exception('Sin IP de red');
+      tvUrl = 'http://$address:$port/tv';
+      tvOn = true;
+      try {
+        final r = await tv.invokeMethod<String>('startTv');
+        if (r == 'connected') sendTv();
+      } catch (_) {}
+      if (mounted) {
+        await showDialog<void>(
+          context: context,
+          builder: (_) => AlertDialog(
+            title: const Text('TV listo por red'),
+            content: SelectableText(
+              'Conecta el televisor a la misma Wi-Fi que CENTRAL y abre esta dirección en el navegador del TV:\n\n$tvUrl\n\nLa pantalla se actualizará automáticamente cada segundo.',
+            ),
+            actions: [
+              FilledButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Aceptar'),
+              ),
+            ],
+          ),
+        );
+      }
+    } catch (_) {
+      tvOn = false;
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No se pudo iniciar la transmisión por red.')),
+        );
+      }
+    }
+    if (mounted) setState(() {});
+  }
+'''
+          s2, n = re.subn(r"  Future<void> linkTv\(\) async \{.*?\n  void sendTv\(\) \{", link_tv + "\n  void sendTv() {", s, count=1, flags=re.S)
+          if n != 1:
+              raise SystemExit('ERROR: no se pudo reemplazar linkTv')
+          p.write_text(s2)
+          PY
+          grep -F "tvUrl = 'http://" lib/main.dart
+          grep -F "'/tv'" lib/main.dart
+          grep -F "'/state'" lib/main.dart
+          grep -F "setInterval(refresh,1000)" lib/main.dart
+          grep -F "NetworkInterface.list" lib/main.dart
+          echo "TV RED OK"
+
       - name: Dependencias
         run: flutter pub get
 
@@ -117,8 +258,8 @@ jobs:
           set -e
           grep -F "const rates = <double>[120, 120, 100, 100, 70];" lib/main.dart
           grep -F "const defaultPin = '1234';" lib/main.dart
-          grep -F "const currentBuild = 122;" lib/main.dart
-          grep -F "const currentVersion = '1.2.2';" lib/main.dart
+          grep -F "const currentBuild = 123;" lib/main.dart
+          grep -F "const currentVersion = '1.2.3';" lib/main.dart
           grep -F "updateManifestUrl" lib/main.dart
           grep -F "Buscar actualizaciones" lib/main.dart
           grep -F "PENDIENTE DE PAGO" lib/main.dart
@@ -126,17 +267,21 @@ jobs:
           grep -F "Colors.red" lib/main.dart
           grep -F "Colors.green" lib/main.dart
           grep -F "MethodChannel('billar_control/tv')" lib/main.dart
+          grep -F 'NetworkInterface.list' lib/main.dart
+          grep -F "'/tv'" lib/main.dart
+          grep -F "'/state'" lib/main.dart
+          grep -F 'setInterval(refresh,1000)' lib/main.dart
           grep -F 'billar_control/tv' android/app/src/main/kotlin/com/billaresdonmiguel/billares_don_miguel/MainActivity.kt
           grep -F '"startTv"' android/app/src/main/kotlin/com/billaresdonmiguel/billares_don_miguel/MainActivity.kt
           grep -F '"updateTv"' android/app/src/main/kotlin/com/billaresdonmiguel/billares_don_miguel/MainActivity.kt
           grep -F 'container.post' android/app/src/main/kotlin/com/billaresdonmiguel/billares_don_miguel/MainActivity.kt
-          grep -F 'version: 1.2.2+122' pubspec.yaml
-          grep -F '"version": "1.2.2+122"' update.json
+          grep -F 'version: 1.2.3+123' pubspec.yaml
+          grep -F '"version": "1.2.3+123"' update.json
           if grep -Fq 'Billar Control Pro' lib/main.dart; then echo 'ERROR: texto heredado'; exit 1; fi
           echo "VALIDACION OK"
 
-      - name: Compilar APK release 122
-        run: flutter build apk --release --no-shrink --build-name=1.2.2 --build-number=122
+      - name: Compilar APK release 123
+        run: flutter build apk --release --no-shrink --build-name=1.2.3 --build-number=123
 
       - name: Preparar APK público de actualización
         run: |
@@ -149,7 +294,7 @@ jobs:
       - name: Subir artefacto
         uses: actions/upload-artifact@v4
         with:
-          name: Billares-Don-Miguel-Update-v1.2.2-build122-run${{ github.run_number }}
+          name: Billares-Don-Miguel-Update-v1.2.3-build123-run${{ github.run_number }}
           path: dist/*
           if-no-files-found: error
           retention-days: 30
@@ -157,7 +302,7 @@ jobs:
       - name: Publicar release público
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.2.2-build122-run${{ github.run_number }}
-          name: Billares Don Miguel v1.2.2 (build 122)
+          tag_name: v1.2.3-build123-run${{ github.run_number }}
+          name: Billares Don Miguel v1.2.3 (build 123)
           generate_release_notes: true
           files: dist/Billares-Don-Miguel-latest.apk
