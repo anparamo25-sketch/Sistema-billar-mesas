@@ -49,11 +49,32 @@ jobs:
       - name: Aplicar mejoras Billares Don Miguel
         run: python3 tools/patch_billar_don_miguel.py
 
-      # IMPORTANTE: no reemplazar el monitor TV después de patch_billar_don_miguel.py.
-      # Ese parche anterior reducía la pantalla TV a una página de prueba y era la
-      # causa de que el APK pudiera conservar una interfaz anterior.
       - name: Aplicar reglas finales y tarifas oficiales
         run: python3 tools/patch_final_rules.py
+
+      - name: Bloquear completamente edicion de tarifas
+        run: python3 tools/patch_lock_rates.py
+
+      - name: Verificar que no existan controles de tarifa
+        working-directory: /tmp/billar_app
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          s = Path('lib/main.dart').read_text()
+          required = "const List<double> defaultRates = [120, 120, 100, 100, 70];"
+          forbidden = [
+              "onPressed: () => _changeRate(id)",
+              "child: const Text('Tarifa')",
+              "Tarifa mesa ${i + 1} (C\\$/hora)",
+              "_changeRate(id)",
+          ]
+          if required not in s:
+              raise SystemExit('FALLO: tarifas oficiales no encontradas')
+          for item in forbidden:
+              if item in s:
+                  raise SystemExit(f'FALLO: control de tarifa detectado: {item}')
+          print('OK: tarifas oficiales bloqueadas en la interfaz y codigo de build')
+          PY
 
       - name: Corregir simbolos de moneda Dart
         working-directory: /tmp/billar_app
