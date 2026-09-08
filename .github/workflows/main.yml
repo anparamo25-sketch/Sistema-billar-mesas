@@ -63,8 +63,8 @@ jobs:
           grep -F "void main()" lib/main.dart
           echo "VALIDACION OK"
 
-      - name: Compilar APK release
-        run: flutter build apk --release --no-shrink --build-name=1.2.1 --build-number=121
+      - name: Compilar APK release 122
+        run: flutter build apk --release --no-shrink --build-name=1.2.1 --build-number=122
 
       - name: Preparar APK público de actualización
         run: |
@@ -77,7 +77,7 @@ jobs:
       - name: Subir artefacto
         uses: actions/upload-artifact@v4
         with:
-          name: Billares-Don-Miguel-Update-v1.2.1-build121-run${{ github.run_number }}
+          name: Billares-Don-Miguel-Update-v1.2.1-build122-run${{ github.run_number }}
           path: dist/*
           if-no-files-found: error
           retention-days: 30
@@ -85,7 +85,7 @@ jobs:
       - name: Publicar release público
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.2.1-build121-run${{ github.run_number }}
-          name: Billares Don Miguel v1.2.1 (build 121)
+          tag_name: v1.2.1-build122-run${{ github.run_number }}
+          name: Billares Don Miguel v1.2.1 (build 122)
           generate_release_notes: true
           files: dist/Billares-Don-Miguel-latest.apk
