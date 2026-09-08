@@ -49,9 +49,9 @@ jobs:
       - name: Aplicar mejoras Billares Don Miguel
         run: python3 tools/patch_billar_don_miguel.py
 
-      - name: Corregir sintaxis del monitor TV
-        run: python3 tools/patch_tv_compile_fix.py
-
+      # IMPORTANTE: no reemplazar el monitor TV después de patch_billar_don_miguel.py.
+      # Ese parche anterior reducía la pantalla TV a una página de prueba y era la
+      # causa de que el APK pudiera conservar una interfaz anterior.
       - name: Aplicar reglas finales y tarifas oficiales
         run: python3 tools/patch_final_rules.py
 
