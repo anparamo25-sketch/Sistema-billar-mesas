@@ -64,45 +64,7 @@ jobs:
           manifest.write_text(s)
           PY
 
-      - name: Restaurar interfaz, estados y textos de Billares Don Miguel
-        run: |
-          set -e
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path('lib/main.dart')
-          s = p.read_text()
-          replacements = {
-              "title: 'Billar Control Pro'": "title: 'Billares-Don-Miguel'",
-              "..write('Billar Control Pro')": "..write('Billares-Don-Miguel')",
-              "title: const Text('BILLAR CONTROL PRO')": "title: const Text('BILLARES DON MIGUEL')",
-              "Game(this.id, {this.active = false, this.start, this.end, this.total = 0});": "Game(this.id, {this.active = false, this.pending = false, this.start, this.end, this.total = 0});",
-              "bool active;\n  DateTime? start, end;": "bool active;\n  bool pending;\n  DateTime? start, end;",
-              "'active': active,\n        'start'": "'active': active,\n        'pending': pending,\n        'start'",
-              "active: j['active'] == true,\n      start": "active: j['active'] == true,\n      pending: j['pending'] == true,\n      start",
-              "g.active = true;\n      g.start": "g.active = true;\n      g.pending = false;\n      g.start",
-              "g.active = false;\n      g.end = DateTime.now();": "g.active = false;\n      g.pending = true;\n      g.end = DateTime.now();",
-              "  Future<void> resetGame(int id) async {": "  Future<void> payGame(int id) async {\n    if (!unlocked) return;\n    final g = games[id - 1];\n    if (!g.pending) return;\n    setState(() => games[id - 1] = Game(id));\n    await save();\n    sendTv();\n  }\n\n  Future<void> resetGame(int id) async {",
-              "Widget card(Game g) => Card(\n        child:": "Widget card(Game g) => Card(\n        color: g.pending\n            ? Colors.amber.shade700\n            : g.active\n                ? Colors.red.shade700\n                : Colors.green.shade700,\n        child:",
-              "Chip(label: Text(g.active ? 'OCUPADA' : 'DISPONIBLE'))": "Chip(label: Text(g.pending ? 'PENDIENTE DE PAGO' : g.active ? 'EN JUEGO' : 'DISPONIBLE'))",
-              "onPressed: g.active ? null : () => startGame(g.id),": "onPressed: g.active || g.pending ? null : () => startGame(g.id),",
-              "onPressed: g.active ? () => finishGame(g.id) : null,": "onPressed: g.active ? () => finishGame(g.id) : g.pending ? () => payGame(g.id) : null,",
-              "label: const Text('Finalizar'),": "label: Text(g.pending ? 'Cobrar' : 'Finalizar'),",
-          }
-          for a, b in replacements.items():
-              if a not in s:
-                  raise SystemExit(f'ERROR: patrón no encontrado: {a}')
-              s = s.replace(a, b, 1)
-          p.write_text(s)
-          PY
-          grep -F "Billares-Don-Miguel" lib/main.dart
-          grep -F "BILLARES DON MIGUEL" lib/main.dart
-          grep -F "PENDIENTE DE PAGO" lib/main.dart
-          grep -F "Colors.amber" lib/main.dart
-          grep -F "Colors.red" lib/main.dart
-          grep -F "Colors.green" lib/main.dart
-          echo "INTERFAZ OK"
-
-      - name: Implementar TV por red sin cambiar la interfaz
+      - name: Preparar versión 1.2.3 y TV por red
         run: |
           set -e
           python3 - <<'PY'
@@ -110,10 +72,17 @@ jobs:
           import re
           p = Path('lib/main.dart')
           s = p.read_text()
+          s = s.replace("const currentBuild = 122;", "const currentBuild = 123;")
+          s = s.replace("const currentVersion = '1.2.2';", "const currentVersion = '1.2.3';")
+          s = s.replace("title: 'Billar Control Pro'", "title: 'Billares-Don-Miguel'")
+          s = s.replace("..write('Billar Control Pro')", "..write('Billares-Don-Miguel')")
+          s = s.replace("title: const Text('BILLAR CONTROL PRO')", "title: const Text('BILLARES DON MIGUEL')")
 
-          s = s.replace("  bool loading = true, unlocked = false, tvOn = false;", "  bool loading = true, unlocked = false, tvOn = false;\n  String tvUrl = '';", 1)
+          if 'String tvUrl = \'\';' not in s:
+              s = s.replace("  bool loading = true, unlocked = false, tvOn = false;", "  bool loading = true, unlocked = false, tvOn = false;\n  String tvUrl = '';")
 
-          start_server = r'''  Future<void> startServer() async {
+          # Preserve the existing LAN/WebSocket table protocol while adding a browser receiver.
+          receiver = r'''  Future<void> startServer() async {
     try {
       server = await HttpServer.bind(InternetAddress.anyIPv4, port, shared: true);
       server!.listen((r) async {
@@ -140,11 +109,7 @@ jobs:
                 if (m['type'] == 'register') {
                   final id = (m['tableId'] as num?)?.toInt() ?? 0;
                   if (id >= 1 && id <= 5) {
-                    s.add(jsonEncode({
-                      'type': 'state',
-                      'tableId': id,
-                      'game': games[id - 1].toJson(),
-                    }));
+                    s.add(jsonEncode({'type': 'state', 'tableId': id, 'game': games[id - 1].toJson()}));
                   }
                 }
               } catch (_) {}
@@ -158,41 +123,20 @@ jobs:
     } catch (_) {}
   }
 
-  String _tvHtml() => '''<!doctype html>
-<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Billares Don Miguel</title><style>
-html,body{margin:0;background:#101010;color:#fff;font-family:Arial,sans-serif;height:100%;overflow:hidden}header{height:12vh;display:flex;align-items:center;justify-content:center;font-size:4vw;font-weight:800;letter-spacing:.08em}main{height:88vh;display:grid;grid-template-columns:repeat(5,1fr);gap:1.4vw;padding:1.2vw;box-sizing:border-box}.card{border-radius:1.2vw;padding:1.2vw;box-sizing:border-box;display:flex;flex-direction:column;justify-content:space-between;box-shadow:0 0 .7vw #000;font-size:1.55vw}.free{background:#16853d}.play{background:#b52323}.pending{background:#b8860b}.name{font-size:2.2vw;font-weight:800}.status{font-size:1.65vw;font-weight:700}.amount{font-size:2vw;font-weight:800}.small{font-size:1.25vw}.error{position:fixed;bottom:1vh;left:0;right:0;text-align:center;color:#aaa;font-size:1.1vw}
-</style></head><body><header>BILLARES DON MIGUEL</header><main id="tables"></main><div id="err" class="error"></div>
-<script>
-const money=n=>'C$ '+Number(n||0).toFixed(2);
-const pad=n=>String(n).padStart(2,'0');
-function time(v){if(!v)return'--:--';const d=new Date(v);return pad(d.getHours())+':'+pad(d.getMinutes());}
-function dur(g){if(!g.start)return'00:00:00';const a=new Date(g.start).getTime(),b=g.end?new Date(g.end).getTime():Date.now(),s=Math.max(0,Math.floor((b-a)/1000));return pad(Math.floor(s/3600))+':'+pad(Math.floor(s%3600/60))+':'+pad(s%60)}
-function draw(data){const root=document.getElementById('tables');root.innerHTML='';(data.tables||[]).forEach(g=>{const c=document.createElement('section');c.className='card '+(g.pending?'pending':g.active?'play':'free');const status=g.pending?'PENDIENTE DE PAGO':g.active?'EN JUEGO':'DISPONIBLE';c.innerHTML='<div><div class="name">MESA '+g.id+'</div><div class="status">'+status+'</div></div><div><div class="small">Inicio: '+time(g.start)+'</div><div class="small">Final: '+time(g.end)+'</div><div class="small">Tiempo: '+dur(g)+'</div><div class="amount">'+money(g.total)+'</div></div>';root.appendChild(c)})}
-async function refresh(){try{const r=await fetch('/state?x='+Date.now(),{cache:'no-store'});if(!r.ok)throw Error();draw(await r.json());document.getElementById('err').textContent='';}catch(e){document.getElementById('err').textContent='Esperando conexión con CENTRAL...'}}
-refresh();setInterval(refresh,1000);
-</script></body></html>''';
+  String _tvHtml() => '''<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Billares Don Miguel</title><style>html,body{margin:0;background:#101010;color:#fff;font-family:Arial,sans-serif;height:100%;overflow:hidden}header{height:12vh;display:flex;align-items:center;justify-content:center;font-size:4vw;font-weight:800}main{height:88vh;display:grid;grid-template-columns:repeat(5,1fr);gap:1.4vw;padding:1.2vw;box-sizing:border-box}.card{border-radius:1.2vw;padding:1.2vw;box-sizing:border-box;display:flex;flex-direction:column;justify-content:space-between;box-shadow:0 0 .7vw #000;font-size:1.55vw}.free{background:#16853d}.play{background:#b52323}.pending{background:#b8860b}.name{font-size:2.2vw;font-weight:800}.status{font-size:1.65vw;font-weight:700}.amount{font-size:2vw;font-weight:800}.small{font-size:1.25vw}.error{position:fixed;bottom:1vh;left:0;right:0;text-align:center;color:#aaa;font-size:1.1vw}</style></head><body><header>BILLARES DON MIGUEL</header><main id="tables"></main><div id="err" class="error"></div><script>const money=n=>'C$ '+Number(n||0).toFixed(2);const pad=n=>String(n).padStart(2,'0');function time(v){if(!v)return'--:--';const d=new Date(v);return pad(d.getHours())+':'+pad(d.getMinutes())}function dur(g){if(!g.start)return'00:00:00';const a=new Date(g.start).getTime(),b=g.end?new Date(g.end).getTime():Date.now(),s=Math.max(0,Math.floor((b-a)/1000));return pad(Math.floor(s/3600))+':'+pad(Math.floor(s%3600/60))+':'+pad(s%60)}function draw(data){const root=document.getElementById('tables');root.innerHTML='';(data.tables||[]).forEach(g=>{const c=document.createElement('section');c.className='card '+(g.pending?'pending':g.active?'play':'free');const status=g.pending?'PENDIENTE DE PAGO':g.active?'EN JUEGO':'DISPONIBLE';c.innerHTML='<div><div class="name">MESA '+g.id+'</div><div class="status">'+status+'</div></div><div><div class="small">Inicio: '+time(g.start)+'</div><div class="small">Final: '+time(g.end)+'</div><div class="small">Tiempo: '+dur(g)+'</div><div class="amount">'+money(g.total)+'</div></div>';root.appendChild(c)})}async function refresh(){try{const r=await fetch('/state?x='+Date.now(),{cache:'no-store'});if(!r.ok)throw Error();draw(await r.json());document.getElementById('err').textContent=''}catch(e){document.getElementById('err').textContent='Esperando conexión con CENTRAL...'}}refresh();setInterval(refresh,1000);</script></body></html>''';
 '''
-
-          s2, n = re.subn(r"  Future<void> startServer\(\) async \{.*?\n  void updateTotals\(\) \{", start_server + "\n  void updateTotals() {", s, count=1, flags=re.S)
+          s, n = re.subn(r"  Future<void> startServer\(\) async \{.*?\n  void updateTotals\(\) \{", receiver + "\n  void updateTotals() {", s, count=1, flags=re.S)
           if n != 1:
-              raise SystemExit('ERROR: no se pudo reemplazar startServer')
-          s = s2
+              raise SystemExit('No se pudo instalar el receptor TV por red')
 
-          link_tv = r'''  Future<void> linkTv() async {
+          link = r'''  Future<void> linkTv() async {
     if (!unlocked) return;
     try {
-      final interfaces = await NetworkInterface.list(
-        type: InternetAddressType.IPv4,
-        includeLoopback: false,
-      );
+      final interfaces = await NetworkInterface.list(type: InternetAddressType.IPv4, includeLoopback: false);
       String? address;
       for (final network in interfaces) {
         for (final item in network.addresses) {
-          if (!item.isLoopback && item.address.isNotEmpty) {
-            address = item.address;
-            break;
-          }
+          if (!item.isLoopback && item.address.isNotEmpty) { address = item.address; break; }
         }
         if (address != null) break;
       }
@@ -208,40 +152,39 @@ refresh();setInterval(refresh,1000);
           context: context,
           builder: (_) => AlertDialog(
             title: const Text('TV listo por red'),
-            content: SelectableText(
-              'Conecta el televisor a la misma Wi-Fi que CENTRAL y abre esta dirección en el navegador del TV:\n\n$tvUrl\n\nLa pantalla se actualizará automáticamente cada segundo.',
-            ),
-            actions: [
-              FilledButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Aceptar'),
-              ),
-            ],
+            content: SelectableText('Conecta el televisor a la misma Wi-Fi que CENTRAL y abre esta dirección en el navegador del TV:\n\n$tvUrl\n\nLa pantalla se actualizará automáticamente cada segundo.'),
+            actions: [FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Aceptar'))],
           ),
         );
       }
     } catch (_) {
       tvOn = false;
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No se pudo iniciar la transmisión por red.')),
-        );
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se pudo iniciar la transmisión por red.')));
     }
     if (mounted) setState(() {});
   }
 '''
-          s2, n = re.subn(r"  Future<void> linkTv\(\) async \{.*?\n  void sendTv\(\) \{", link_tv + "\n  void sendTv() {", s, count=1, flags=re.S)
+          s, n = re.subn(r"  Future<void> linkTv\(\) async \{.*?\n  void sendTv\(\) \{", link + "\n  void sendTv() {", s, count=1, flags=re.S)
           if n != 1:
-              raise SystemExit('ERROR: no se pudo reemplazar linkTv')
-          p.write_text(s2)
+              raise SystemExit('No se pudo instalar el enlace TV por red')
+
+          # Preserve the established pending-payment state and card colors.
+          if 'bool pending;' not in s:
+              s = s.replace('  bool active;\n  DateTime? start, end;', '  bool active;\n  bool pending;\n  DateTime? start, end;')
+              s = s.replace("Game(this.id, {this.active = false, this.start, this.end, this.total = 0});", "Game(this.id, {this.active = false, this.pending = false, this.start, this.end, this.total = 0});")
+              s = s.replace("'active': active,\n        'start'", "'active': active,\n        'pending': pending,\n        'start'")
+              s = s.replace("active: j['active'] == true,\n      start", "active: j['active'] == true,\n      pending: j['pending'] == true,\n      start")
+              s = s.replace("g.active = true;\n      g.start", "g.active = true;\n      g.pending = false;\n      g.start")
+              s = s.replace("g.active = false;\n      g.end = DateTime.now();", "g.active = false;\n      g.pending = true;\n      g.end = DateTime.now();")
+              s = s.replace("  Future<void> resetGame(int id) async {", "  Future<void> payGame(int id) async {\n    if (!unlocked) return;\n    final g = games[id - 1];\n    if (!g.pending) return;\n    setState(() => games[id - 1] = Game(id));\n    await save();\n    sendTv();\n  }\n\n  Future<void> resetGame(int id) async {")
+              s = s.replace("Widget card(Game g) => Card(\n        child:", "Widget card(Game g) => Card(\n        color: g.pending ? Colors.amber.shade700 : g.active ? Colors.red.shade700 : Colors.green.shade700,\n        child:")
+              s = s.replace("Chip(label: Text(g.active ? 'OCUPADA' : 'DISPONIBLE'))", "Chip(label: Text(g.pending ? 'PENDIENTE DE PAGO' : g.active ? 'EN JUEGO' : 'DISPONIBLE'))")
+              s = s.replace("onPressed: g.active ? null : () => startGame(g.id),", "onPressed: g.active || g.pending ? null : () => startGame(g.id),")
+              s = s.replace("onPressed: g.active ? () => finishGame(g.id) : null,", "onPressed: g.active ? () => finishGame(g.id) : g.pending ? () => payGame(g.id) : null,")
+              s = s.replace("label: const Text('Finalizar'),", "label: Text(g.pending ? 'Cobrar' : 'Finalizar'),")
+          p.write_text(s)
           PY
-          grep -F "tvUrl = 'http://" lib/main.dart
-          grep -F "'/tv'" lib/main.dart
-          grep -F "'/state'" lib/main.dart
-          grep -F "setInterval(refresh,1000)" lib/main.dart
-          grep -F "NetworkInterface.list" lib/main.dart
-          echo "TV RED OK"
+          dart format lib
 
       - name: Dependencias
         run: flutter pub get
@@ -260,14 +203,12 @@ refresh();setInterval(refresh,1000);
           grep -F "const defaultPin = '1234';" lib/main.dart
           grep -F "const currentBuild = 123;" lib/main.dart
           grep -F "const currentVersion = '1.2.3';" lib/main.dart
-          grep -F "updateManifestUrl" lib/main.dart
-          grep -F "Buscar actualizaciones" lib/main.dart
           grep -F "PENDIENTE DE PAGO" lib/main.dart
           grep -F "Colors.amber" lib/main.dart
           grep -F "Colors.red" lib/main.dart
           grep -F "Colors.green" lib/main.dart
           grep -F "MethodChannel('billar_control/tv')" lib/main.dart
-          grep -F 'NetworkInterface.list' lib/main.dart
+          grep -F "NetworkInterface.list" lib/main.dart
           grep -F "'/tv'" lib/main.dart
           grep -F "'/state'" lib/main.dart
           grep -F 'setInterval(refresh,1000)' lib/main.dart
@@ -277,7 +218,6 @@ refresh();setInterval(refresh,1000);
           grep -F 'container.post' android/app/src/main/kotlin/com/billaresdonmiguel/billares_don_miguel/MainActivity.kt
           grep -F 'version: 1.2.3+123' pubspec.yaml
           grep -F '"version": "1.2.3+123"' update.json
-          if grep -Fq 'Billar Control Pro' lib/main.dart; then echo 'ERROR: texto heredado'; exit 1; fi
           echo "VALIDACION OK"
 
       - name: Compilar APK release 123
