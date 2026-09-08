@@ -17,16 +17,14 @@ import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Typeface;
 import android.graphics.RectF;
+import android.graphics.Color;
 import android.widget.Toast;
-
-import androidx.annotation.NonNull;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
 
 import io.flutter.embedding.android.FlutterActivity;
 import io.flutter.embedding.engine.FlutterEngine;
-import io.flutter.plugin.common.MethodCall;
 import io.flutter.plugin.common.MethodChannel;
 
 public class MainActivity extends FlutterActivity {
@@ -34,42 +32,43 @@ public class MainActivity extends FlutterActivity {
     private TvPresentation tvPresentation;
 
     @Override
-    public void configureFlutterEngine(@NonNull FlutterEngine flutterEngine) {
+    public void configureFlutterEngine(FlutterEngine flutterEngine) {
         super.configureFlutterEngine(flutterEngine);
         new MethodChannel(flutterEngine.getDartExecutor().getBinaryMessenger(), CHANNEL)
                 .setMethodCallHandler((call, result) -> {
-                    if ("startTv".equals(call.method)) {
-                        boolean ok = showTv();
-                        result.success(ok ? "connected" : "not_connected");
-                    } else if ("updateTv".equals(call.method)) {
-                        String tables = call.argument("tables");
-                        if (tvPresentation != null && tables != null) tvPresentation.update(tables);
-                        result.success(null);
-                    } else {
-                        result.notImplemented();
+                    try {
+                        if ("startTv".equals(call.method)) {
+                            result.success(showTv() ? "connected" : "not_connected");
+                        } else if ("updateTv".equals(call.method)) {
+                            String tables = call.argument("tables");
+                            if (tvPresentation != null && tables != null) tvPresentation.update(tables);
+                            result.success(null);
+                        } else {
+                            result.notImplemented();
+                        }
+                    } catch (Exception e) {
+                        result.error("TV_ERROR", "No se pudo procesar la pantalla TV", null);
                     }
                 });
     }
 
     private boolean showTv() {
-        DisplayManager dm = (DisplayManager) getSystemService(Context.DISPLAY_SERVICE);
-        Display[] displays = dm.getDisplays(DisplayManager.DISPLAY_CATEGORY_PRESENTATION);
-        if (displays.length == 0) {
-            Toast.makeText(this, "No hay un televisor/pantalla externa conectado", Toast.LENGTH_LONG).show();
+        try {
+            DisplayManager dm = (DisplayManager) getSystemService(Context.DISPLAY_SERVICE);
+            if (dm == null) return false;
+            Display[] displays = dm.getDisplays(DisplayManager.DISPLAY_CATEGORY_PRESENTATION);
+            if (displays.length == 0) {
+                Toast.makeText(this, "No hay un televisor/pantalla externa conectado", Toast.LENGTH_LONG).show();
+                return false;
+            }
+            if (tvPresentation != null) tvPresentation.dismiss();
+            tvPresentation = new TvPresentation(this, displays[0]);
+            tvPresentation.show();
+            return true;
+        } catch (Exception e) {
+            Toast.makeText(this, "No se pudo abrir la pantalla del televisor", Toast.LENGTH_LONG).show();
             return false;
         }
-        if (tvPresentation != null) {
-            tvPresentation.dismiss();
-        }
-        tvPresentation = new TvPresentation(this, displays[0]);
-        tvPresentation.show();
-        return true;
-    }
-
-    @Override
-    protected void onStop() {
-        super.onStop();
-        // La pantalla externa puede permanecer activa mientras la CENTRAL siga conectada.
     }
 
     private static class TvPresentation extends Presentation {
@@ -104,7 +103,7 @@ public class MainActivity extends FlutterActivity {
         @Override protected void onDraw(Canvas c) {
             super.onDraw(c);
             float w = getWidth(), h = getHeight();
-            paint.setColor(0xFFFFFFFF);
+            paint.setColor(Color.WHITE);
             paint.setTextSize(Math.max(28, w / 28));
             paint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD));
             c.drawText("BILLARES DON MIGUEL", 40, 55, paint);
@@ -150,8 +149,5 @@ public class MainActivity extends FlutterActivity {
     }
 }
 '''
-
-# Fix missing Color import after keeping source compact.
-java = java.replace('import android.graphics.Canvas;\n', 'import android.graphics.Canvas;\nimport android.graphics.Color;\n')
 (root / 'MainActivity.java').write_text(java)
-print('MainActivity con pantalla externa TV instalada.')
+print('MainActivity TV externa segura instalada.')
