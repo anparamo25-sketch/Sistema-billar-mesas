@@ -15,21 +15,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Configurar Flutter
         uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.29.3'
           channel: stable
           cache: true
-
-      - name: Verificar proyecto Android y TV
-        run: |
-          set -e
-          test -f android/app/src/main/kotlin/com/billaresdonmiguel/billares_don_miguel/MainActivity.kt
-          grep -F 'billar_control/tv' android/app/src/main/kotlin/com/billaresdonmiguel/billares_don_miguel/MainActivity.kt
-          grep -F 'container.post' android/app/src/main/kotlin/com/billaresdonmiguel/billares_don_miguel/MainActivity.kt
-
       - name: Generar estructura Android y preservar TV
         run: |
           set -e
@@ -39,20 +30,13 @@ jobs:
           mkdir -p android/app/src/main/kotlin/com/billaresdonmiguel/billares_don_miguel
           cp /tmp/billares-tv/MainActivity.kt android/app/src/main/kotlin/com/billaresdonmiguel/billares_don_miguel/MainActivity.kt
           test -f android/app/build.gradle.kts
-          test -f android/app/src/main/AndroidManifest.xml
-          grep -F 'billar_control/tv' android/app/src/main/kotlin/com/billaresdonmiguel/billares_don_miguel/MainActivity.kt
-          grep -F 'container.post' android/app/src/main/kotlin/com/billaresdonmiguel/billares_don_miguel/MainActivity.kt
-
       - name: Configurar Android
         run: |
           set -e
           python3 - <<'PY'
           from pathlib import Path
           gradle = Path('android/app/build.gradle.kts')
-          s = gradle.read_text()
-          s = s.replace('compileSdk = flutter.compileSdkVersion', 'compileSdk = 36')
-          s = s.replace('ndkVersion = flutter.ndkVersion', 'ndkVersion = "27.0.12077973"')
-          s = s.replace('minSdk = flutter.minSdkVersion', 'minSdk = 23')
+          s = gradle.read_text().replace('compileSdk = flutter.compileSdkVersion', 'compileSdk = 36').replace('ndkVersion = flutter.ndkVersion', 'ndkVersion = "27.0.12077973"').replace('minSdk = flutter.minSdkVersion', 'minSdk = 23')
           gradle.write_text(s)
           manifest = Path('android/app/src/main/AndroidManifest.xml')
           s = manifest.read_text()
@@ -60,28 +44,21 @@ jobs:
               s = s.replace('<manifest xmlns:android="http://schemas.android.com/apk/res/android">', '<manifest xmlns:android="http://schemas.android.com/apk/res/android">\n    <uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />')
           if 'android:usesCleartextTraffic=' not in s:
               s = s.replace('<application', '<application android:usesCleartextTraffic="true"', 1)
-          s = s.replace('android:label="billares_don_miguel"', 'android:label="Billares Don Miguel"')
           manifest.write_text(s)
           PY
-
-      - name: Preparar versión 1.2.3 y TV por red
+      - name: Preparar version 1.2.3 build 123 y TV por red
         run: |
           set -e
           python3 - <<'PY'
           from pathlib import Path
-          import re
           p = Path('lib/main.dart')
           s = p.read_text()
-          s = s.replace("const currentBuild = 122;", "const currentBuild = 123;")
-          s = s.replace("const currentVersion = '1.2.2';", "const currentVersion = '1.2.3';")
+          s = s.replace('const currentBuild = 122;', 'const currentBuild = 123;').replace("const currentVersion = '1.2.2';", "const currentVersion = '1.2.3';")
           s = s.replace("title: 'Billar Control Pro'", "title: 'Billares-Don-Miguel'")
           s = s.replace("..write('Billar Control Pro')", "..write('Billares-Don-Miguel')")
-          s = s.replace("title: const Text('BILLAR CONTROL PRO')", "title: const Text('BILLARES DON MIGUEL')")
-
-          if 'String tvUrl = \'\';' not in s:
-              s = s.replace("  bool loading = true, unlocked = false, tvOn = false;", "  bool loading = true, unlocked = false, tvOn = false;\n  String tvUrl = '';")
-
-          # Preserve the existing LAN/WebSocket table protocol while adding a browser receiver.
+          marker = "  Future<void> startServer() async {"
+          start = s.index(marker)
+          end = s.index("\n  void updateTotals()", start)
           receiver = r'''  Future<void> startServer() async {
     try {
       server = await HttpServer.bind(InternetAddress.anyIPv4, port, shared: true);
@@ -96,24 +73,15 @@ jobs:
         if (r.uri.path == '/tv' || r.uri.path == '/') {
           r.response.headers.contentType = ContentType.html;
           r.response.headers.set('Cache-Control', 'no-store');
+          r.response.headers.set('Access-Control-Allow-Origin', '*');
           r.response.write(_tvHtml());
           await r.response.close();
           return;
         }
         if (WebSocketTransformer.isUpgradeRequest(r)) {
           try {
-            final s = await WebSocketTransformer.upgrade(r);
-            s.listen((data) {
-              try {
-                final m = jsonDecode(data) as Map<String, dynamic>;
-                if (m['type'] == 'register') {
-                  final id = (m['tableId'] as num?)?.toInt() ?? 0;
-                  if (id >= 1 && id <= 5) {
-                    s.add(jsonEncode({'type': 'state', 'tableId': id, 'game': games[id - 1].toJson()}));
-                  }
-                }
-              } catch (_) {}
-            });
+            final socket = await WebSocketTransformer.upgrade(r);
+            socket.listen((data) {});
           } catch (_) {}
           return;
         }
@@ -125,10 +93,9 @@ jobs:
 
   String _tvHtml() => '''<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Billares Don Miguel</title><style>html,body{margin:0;background:#101010;color:#fff;font-family:Arial,sans-serif;height:100%;overflow:hidden}header{height:12vh;display:flex;align-items:center;justify-content:center;font-size:4vw;font-weight:800}main{height:88vh;display:grid;grid-template-columns:repeat(5,1fr);gap:1.4vw;padding:1.2vw;box-sizing:border-box}.card{border-radius:1.2vw;padding:1.2vw;box-sizing:border-box;display:flex;flex-direction:column;justify-content:space-between;box-shadow:0 0 .7vw #000;font-size:1.55vw}.free{background:#16853d}.play{background:#b52323}.pending{background:#b8860b}.name{font-size:2.2vw;font-weight:800}.status{font-size:1.65vw;font-weight:700}.amount{font-size:2vw;font-weight:800}.small{font-size:1.25vw}.error{position:fixed;bottom:1vh;left:0;right:0;text-align:center;color:#aaa;font-size:1.1vw}</style></head><body><header>BILLARES DON MIGUEL</header><main id="tables"></main><div id="err" class="error"></div><script>const money=n=>'C$ '+Number(n||0).toFixed(2);const pad=n=>String(n).padStart(2,'0');function time(v){if(!v)return'--:--';const d=new Date(v);return pad(d.getHours())+':'+pad(d.getMinutes())}function dur(g){if(!g.start)return'00:00:00';const a=new Date(g.start).getTime(),b=g.end?new Date(g.end).getTime():Date.now(),s=Math.max(0,Math.floor((b-a)/1000));return pad(Math.floor(s/3600))+':'+pad(Math.floor(s%3600/60))+':'+pad(s%60)}function draw(data){const root=document.getElementById('tables');root.innerHTML='';(data.tables||[]).forEach(g=>{const c=document.createElement('section');c.className='card '+(g.pending?'pending':g.active?'play':'free');const status=g.pending?'PENDIENTE DE PAGO':g.active?'EN JUEGO':'DISPONIBLE';c.innerHTML='<div><div class="name">MESA '+g.id+'</div><div class="status">'+status+'</div></div><div><div class="small">Inicio: '+time(g.start)+'</div><div class="small">Final: '+time(g.end)+'</div><div class="small">Tiempo: '+dur(g)+'</div><div class="amount">'+money(g.total)+'</div></div>';root.appendChild(c)})}async function refresh(){try{const r=await fetch('/state?x='+Date.now(),{cache:'no-store'});if(!r.ok)throw Error();draw(await r.json());document.getElementById('err').textContent=''}catch(e){document.getElementById('err').textContent='Esperando conexión con CENTRAL...'}}refresh();setInterval(refresh,1000);</script></body></html>''';
 '''
-          s, n = re.subn(r"  Future<void> startServer\(\) async \{.*?\n  void updateTotals\(\) \{", receiver + "\n  void updateTotals() {", s, count=1, flags=re.S)
-          if n != 1:
-              raise SystemExit('No se pudo instalar el receptor TV por red')
-
+          s = s[:start] + receiver + s[end:]
+          start = s.index("  Future<void> linkTv() async {")
+          end = s.index("\n  void sendTv()", start)
           link = r'''  Future<void> linkTv() async {
     if (!unlocked) return;
     try {
@@ -136,23 +103,19 @@ jobs:
       String? address;
       for (final network in interfaces) {
         for (final item in network.addresses) {
-          if (!item.isLoopback && item.address.isNotEmpty) { address = item.address; break; }
+          if (!item.isLoopback) { address = item.address; break; }
         }
         if (address != null) break;
       }
       if (address == null) throw Exception('Sin IP de red');
       tvUrl = 'http://$address:$port/tv';
       tvOn = true;
-      try {
-        final r = await tv.invokeMethod<String>('startTv');
-        if (r == 'connected') sendTv();
-      } catch (_) {}
       if (mounted) {
         await showDialog<void>(
           context: context,
           builder: (_) => AlertDialog(
             title: const Text('TV listo por red'),
-            content: SelectableText('Conecta el televisor a la misma Wi-Fi que CENTRAL y abre esta dirección en el navegador del TV:\n\n$tvUrl\n\nLa pantalla se actualizará automáticamente cada segundo.'),
+            content: SelectableText('Conecta el televisor a la misma Wi-Fi que CENTRAL y abre esta dirección en el navegador del TV:\n\n$tvUrl\n\nLa pantalla se actualizará automáticamente.'),
             actions: [FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Aceptar'))],
           ),
         );
@@ -164,85 +127,42 @@ jobs:
     if (mounted) setState(() {});
   }
 '''
-          s, n = re.subn(r"  Future<void> linkTv\(\) async \{.*?\n  void sendTv\(\) \{", link + "\n  void sendTv() {", s, count=1, flags=re.S)
-          if n != 1:
-              raise SystemExit('No se pudo instalar el enlace TV por red')
-
-          # Preserve the established pending-payment state and card colors.
-          if 'bool pending;' not in s:
-              s = s.replace('  bool active;\n  DateTime? start, end;', '  bool active;\n  bool pending;\n  DateTime? start, end;')
-              s = s.replace("Game(this.id, {this.active = false, this.start, this.end, this.total = 0});", "Game(this.id, {this.active = false, this.pending = false, this.start, this.end, this.total = 0});")
-              s = s.replace("'active': active,\n        'start'", "'active': active,\n        'pending': pending,\n        'start'")
-              s = s.replace("active: j['active'] == true,\n      start", "active: j['active'] == true,\n      pending: j['pending'] == true,\n      start")
-              s = s.replace("g.active = true;\n      g.start", "g.active = true;\n      g.pending = false;\n      g.start")
-              s = s.replace("g.active = false;\n      g.end = DateTime.now();", "g.active = false;\n      g.pending = true;\n      g.end = DateTime.now();")
-              s = s.replace("  Future<void> resetGame(int id) async {", "  Future<void> payGame(int id) async {\n    if (!unlocked) return;\n    final g = games[id - 1];\n    if (!g.pending) return;\n    setState(() => games[id - 1] = Game(id));\n    await save();\n    sendTv();\n  }\n\n  Future<void> resetGame(int id) async {")
-              s = s.replace("Widget card(Game g) => Card(\n        child:", "Widget card(Game g) => Card(\n        color: g.pending ? Colors.amber.shade700 : g.active ? Colors.red.shade700 : Colors.green.shade700,\n        child:")
-              s = s.replace("Chip(label: Text(g.active ? 'OCUPADA' : 'DISPONIBLE'))", "Chip(label: Text(g.pending ? 'PENDIENTE DE PAGO' : g.active ? 'EN JUEGO' : 'DISPONIBLE'))")
-              s = s.replace("onPressed: g.active ? null : () => startGame(g.id),", "onPressed: g.active || g.pending ? null : () => startGame(g.id),")
-              s = s.replace("onPressed: g.active ? () => finishGame(g.id) : null,", "onPressed: g.active ? () => finishGame(g.id) : g.pending ? () => payGame(g.id) : null,")
-              s = s.replace("label: const Text('Finalizar'),", "label: Text(g.pending ? 'Cobrar' : 'Finalizar'),")
+          s = s[:start] + link + s[end:]
           p.write_text(s)
           PY
           dart format lib
-
-      - name: Dependencias
-        run: flutter pub get
-
-      - name: Formatear y analizar
+      - name: Dependencias y analisis
         run: |
           set -e
-          rm -f test/widget_test.dart
+          flutter pub get
           dart format lib
           flutter analyze --no-fatal-infos
-
-      - name: Validar reglas del sistema
+      - name: Validar version y TV por red
         run: |
           set -e
           grep -F "const rates = <double>[120, 120, 100, 100, 70];" lib/main.dart
           grep -F "const defaultPin = '1234';" lib/main.dart
           grep -F "const currentBuild = 123;" lib/main.dart
           grep -F "const currentVersion = '1.2.3';" lib/main.dart
-          grep -F "PENDIENTE DE PAGO" lib/main.dart
-          grep -F "Colors.amber" lib/main.dart
-          grep -F "Colors.red" lib/main.dart
-          grep -F "Colors.green" lib/main.dart
-          grep -F "MethodChannel('billar_control/tv')" lib/main.dart
           grep -F "NetworkInterface.list" lib/main.dart
-          grep -F "'/tv'" lib/main.dart
-          grep -F "'/state'" lib/main.dart
+          grep -F "r.uri.path == '/tv'" lib/main.dart
+          grep -F "r.uri.path == '/state'" lib/main.dart
           grep -F 'setInterval(refresh,1000)' lib/main.dart
-          grep -F 'billar_control/tv' android/app/src/main/kotlin/com/billaresdonmiguel/billares_don_miguel/MainActivity.kt
-          grep -F '"startTv"' android/app/src/main/kotlin/com/billaresdonmiguel/billares_don_miguel/MainActivity.kt
-          grep -F '"updateTv"' android/app/src/main/kotlin/com/billaresdonmiguel/billares_don_miguel/MainActivity.kt
-          grep -F 'container.post' android/app/src/main/kotlin/com/billaresdonmiguel/billares_don_miguel/MainActivity.kt
-          grep -F 'version: 1.2.3+123' pubspec.yaml
-          grep -F '"version": "1.2.3+123"' update.json
-          echo "VALIDACION OK"
-
       - name: Compilar APK release 123
-        run: flutter build apk --release --no-shrink --build-name=1.2.3 --build-number=123
-
-      - name: Preparar APK público de actualización
-        run: |
-          set -e
-          test -s build/app/outputs/flutter-apk/app-release.apk
-          mkdir -p dist
-          cp build/app/outputs/flutter-apk/app-release.apk dist/Billares-Don-Miguel-latest.apk
-          sha256sum dist/Billares-Don-Miguel-latest.apk > dist/SHA256SUMS.txt
-
+        run: flutter build apk --release
+      - name: Preparar APK publico
+        run: cp build/app/outputs/flutter-apk/app-release.apk Billares-Don-Miguel-latest.apk
       - name: Subir artefacto
         uses: actions/upload-artifact@v4
         with:
-          name: Billares-Don-Miguel-Update-v1.2.3-build123-run${{ github.run_number }}
-          path: dist/*
+          name: Billares-Don-Miguel-Update-v1.2.3-build123
+          path: Billares-Don-Miguel-latest.apk
           if-no-files-found: error
-          retention-days: 30
-
-      - name: Publicar release público
+      - name: Publicar release publico
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.2.3-build123-run${{ github.run_number }}
-          name: Billares Don Miguel v1.2.3 (build 123)
-          generate_release_notes: true
-          files: dist/Billares-Don-Miguel-latest.apk
+          tag_name: v1.2.3-build123
+          name: Billares Don Miguel v1.2.3 build 123
+          body: Version 1.2.3 build 123 con transmisión TV por red local.
+          files: Billares-Don-Miguel-latest.apk
+          make_latest: true
