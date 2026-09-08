@@ -55,6 +55,19 @@ jobs:
       - name: Corregir sintaxis del monitor TV
         run: python3 tools/patch_tv_compile_fix.py
 
+      - name: Corregir simbolos de moneda Dart
+        working-directory: /tmp/billar_app
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('lib/main.dart')
+          s = p.read_text()
+          # En Dart, un $ seguido de espacio se interpreta como inicio de interpolación.
+          # Los textos monetarios deben usar \$ para mostrar literalmente el símbolo.
+          s = s.replace('C$ ', r'C\$ ')
+          p.write_text(s)
+          PY
+
       - name: Configurar red local Android
         working-directory: /tmp/billar_app
         run: |
