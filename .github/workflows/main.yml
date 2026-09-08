@@ -45,8 +45,6 @@ jobs:
         run: python3 tools/patch_lock_rates.py
       - name: Corregir acceso y monitor TV
         run: python3 tools/patch_access_tv.py
-      - name: Blindar estabilidad del arranque
-        run: python3 tools/patch_stability.py
       - name: Corregir simbolos de moneda Dart
         working-directory: /tmp/billar_app
         run: |
@@ -79,9 +77,7 @@ jobs:
                   raise SystemExit(f'FALLO: interfaz/control no permitido: {item}')
           if "MethodChannel('billar_control/tv')" not in s or "startTv" not in s:
               raise SystemExit('FALLO: enlace TV por pantalla externa no encontrado')
-          if "package:url_launcher/url_launcher.dart" in s or "_checkForUpdates" in s:
-              raise SystemExit('FALLO: comprobador de actualizaciones no debe ejecutarse durante el arranque')
-          print('OK: administrador, tarifas bloqueadas, TV externa y arranque estable presentes')
+          print('OK: administrador, tarifas bloqueadas, TV externa y arranque sin parche riesgoso presentes')
           PY
           dart format --output=none lib/main.dart
       - name: Configurar red local Android
