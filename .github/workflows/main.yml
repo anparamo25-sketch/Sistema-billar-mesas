@@ -43,6 +43,17 @@ jobs:
         run: python3 tools/patch_lock_rates.py
       - name: Corregir acceso y monitor TV
         run: python3 tools/patch_access_tv.py
+      - name: Corregir simbolos de moneda Dart
+        working-directory: /tmp/billar_app
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          p = Path('lib/main.dart')
+          s = p.read_text()
+          s = re.sub(r'(?<!\\)C\$', r'C\\$', s)
+          p.write_text(s)
+          PY
       - name: Validar reglas de negocio y sintaxis
         working-directory: /tmp/billar_app
         run: |
@@ -67,16 +78,6 @@ jobs:
           print('OK: solo administrador, tarifas bloqueadas y monitor TV presente')
           PY
           dart format --output=none lib/main.dart
-      - name: Corregir simbolos de moneda Dart
-        working-directory: /tmp/billar_app
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path('lib/main.dart')
-          s = p.read_text()
-          s = s.replace('C$ ', r'C\$ ')
-          p.write_text(s)
-          PY
       - name: Configurar red local Android
         working-directory: /tmp/billar_app
         run: |
