@@ -26,6 +26,13 @@ jobs:
       - name: Crear proyecto Android con el mismo identificador de la app instalada
         run: flutter create --platforms=android --org com.billaresdonmiguel --project-name billares_don_miguel .
 
+      - name: Restaurar integración nativa de TV
+        run: |
+          set -e
+          test -f android/app/src/main/kotlin/com/billaresdonmiguel/billares_don_miguel/MainActivity.kt
+          git checkout -- android/app/src/main/kotlin/com/billaresdonmiguel/billares_don_miguel/MainActivity.kt
+          grep -F 'billar_control/tv' android/app/src/main/kotlin/com/billaresdonmiguel/billares_don_miguel/MainActivity.kt
+
       - name: Configurar Android
         run: |
           python3 - <<'PY'
@@ -38,8 +45,7 @@ jobs:
           gradle.write_text(s)
           manifest = Path('android/app/src/main/AndroidManifest.xml')
           s = manifest.read_text()
-          marker = '<uses-permission android:name="android.permission.INTERNET" />'
-          if marker not in s:
+          if 'android.permission.INTERNET' not in s:
               s = s.replace('<manifest xmlns:android="http://schemas.android.com/apk/res/android">', '<manifest xmlns:android="http://schemas.android.com/apk/res/android">\n    <uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />')
           if 'android:usesCleartextTraffic=' not in s:
               s = s.replace('<application', '<application android:usesCleartextTraffic="true"', 1)
@@ -52,15 +58,21 @@ jobs:
 
       - name: Formatear y analizar
         run: |
+          set -e
           rm -f test/widget_test.dart
           dart format lib
           flutter analyze --no-fatal-infos
 
       - name: Validar reglas del sistema
         run: |
+          set -e
           grep -F "const rates = <double>[120, 120, 100, 100, 70];" lib/main.dart
           grep -F "const defaultPin = '1234';" lib/main.dart
           grep -F "void main()" lib/main.dart
+          grep -F "MethodChannel('billar_control/tv')" lib/main.dart
+          grep -F 'billar_control/tv' android/app/src/main/kotlin/com/billaresdonmiguel/billares_don_miguel/MainActivity.kt
+          grep -F '"startTv"' android/app/src/main/kotlin/com/billaresdonmiguel/billares_don_miguel/MainActivity.kt
+          grep -F '"updateTv"' android/app/src/main/kotlin/com/billaresdonmiguel/billares_don_miguel/MainActivity.kt
           echo "VALIDACION OK"
 
       - name: Compilar APK release 122
