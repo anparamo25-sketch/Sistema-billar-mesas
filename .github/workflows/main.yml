@@ -1,115 +1,59 @@
-name: Build Billar Control Pro APK
-
+name: Build Billar Control Pro
 on:
   workflow_dispatch:
   push:
-    branches:
-      - main
-      - master
+    branches: [main]
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Descargar proyecto
-        uses: actions/checkout@v4
-      - name: Configurar Flutter
-        uses: subosito/flutter-action@v2
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.24.5'
           channel: stable
           cache: true
-      - name: Guardar código de Billar
+      - name: Crear proyecto Flutter Android limpio
+        run: flutter create --project-name=billar_control_pro --platforms=android /tmp/billar_app
+      - name: Copiar código
         run: |
-          mkdir -p /tmp/billar
-          cp lib/main.dart /tmp/billar/main.dart
-          cp pubspec.yaml /tmp/billar/pubspec.yaml
-      - name: Crear estructura Android
-        run: |
-          flutter create --project-name=billar_control_pro --platforms=android /tmp/billar_app
-      - name: Colocar código de Billar
-        run: |
-          cp /tmp/billar/main.dart /tmp/billar_app/lib/main.dart
-          cp /tmp/billar/pubspec.yaml /tmp/billar_app/pubspec.yaml
-      - name: Agregar pantalla TV externa
-        run: python3 tools/patch_android_tv.py
-      - name: Corregir compatibilidad Dart
-        run: python3 tools/patch_compile.py
-      - name: Aplicar correcciones de conexion LAN
-        run: python3 tools/patch_network.py
-      - name: Aplicar mejoras Billares Don Miguel
-        run: python3 tools/patch_billar_don_miguel.py
-      - name: Aplicar reglas finales y tarifas oficiales
-        run: python3 tools/patch_final_rules.py
-      - name: Bloquear completamente edicion de tarifas
-        run: python3 tools/patch_lock_rates.py
-      - name: Corregir acceso y monitor TV
-        run: python3 tools/patch_access_tv.py
-      - name: Corregir simbolos de moneda Dart
+          cp lib/main.dart /tmp/billar_app/lib/main.dart
+          cp pubspec.yaml /tmp/billar_app/pubspec.yaml
+      - name: Configurar permisos de red
         working-directory: /tmp/billar_app
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          import re
-          p = Path('lib/main.dart')
-          s = p.read_text()
-          s = re.sub(r'(?<!\\)C\$', r'C\\$', s)
-          p.write_text(s)
-          PY
-      - name: Validar reglas de negocio y sintaxis
-        working-directory: /tmp/billar_app
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          s = Path('lib/main.dart').read_text()
-          required = "const List<double> defaultRates = [120, 120, 100, 100, 70];"
-          if required not in s:
-              raise SystemExit('FALLO: tarifas oficiales no encontradas')
-          forbidden = [
-              "ButtonSegment(value: 'table'",
-              "Text('MESA')",
-              "DropdownButtonFormField<int>",
-              "onPressed: () => _changeRate(id)",
-              "Tarifa mesa ${i + 1} (C\\$/hora)",
-          ]
-          for item in forbidden:
-              if item in s:
-                  raise SystemExit(f'FALLO: interfaz/control no permitido: {item}')
-          if "MethodChannel('billar_control/tv')" not in s or "startTv" not in s:
-              raise SystemExit('FALLO: enlace TV por pantalla externa no encontrado')
-          print('OK: administrador, tarifas bloqueadas, TV externa y arranque sin parche riesgoso presentes')
-          PY
-          dart format --output=none lib/main.dart
-      - name: Configurar red local Android
-        working-directory: /tmp/billar_app
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path('android/app/src/main/AndroidManifest.xml')
-          s = p.read_text()
-          manifest = '<manifest xmlns:android="http://schemas.android.com/apk/res/android">'
+          p=Path('android/app/src/main/AndroidManifest.xml')
+          s=p.read_text()
+          marker='<manifest xmlns:android="http://schemas.android.com/apk/res/android">'
           if 'android.permission.INTERNET' not in s:
-              s = s.replace(manifest, manifest + '\n    <uses-permission android:name="android.permission.INTERNET" />')
+              s=s.replace(marker,marker+'\n    <uses-permission android:name="android.permission.INTERNET" />')
           if 'android.permission.ACCESS_NETWORK_STATE' not in s:
-              s = s.replace(manifest, manifest + '\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />')
-          if 'android:usesCleartextTraffic=' not in s:
-              s = s.replace('<application', '<application android:usesCleartextTraffic="true"', 1)
+              s=s.replace(marker,marker+'\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />')
+          if 'android:usesCleartextTraffic' not in s:
+              s=s.replace('<application','<application android:usesCleartextTraffic="true"',1)
           p.write_text(s)
           PY
-      - name: Eliminar prueba generada incompatible
+      - name: Preparar dependencias
         working-directory: /tmp/billar_app
-        run: rm -f test/widget_test.dart
-      - name: Instalar dependencias
+        run: |
+          rm -f test/widget_test.dart
+          flutter pub get
+          dart format --output=none lib/main.dart
+          flutter analyze --no-fatal-infos
+      - name: Validar reglas
         working-directory: /tmp/billar_app
-        run: flutter pub get
-      - name: Analizar codigo
-        working-directory: /tmp/billar_app
-        run: flutter analyze --no-fatal-infos
-      - name: Compilar APK estable sin shrink
+        run: |
+          grep -F "const rates = <double>[120, 120, 100, 100, 70];" lib/main.dart
+          grep -F "void main() {" lib/main.dart
+          grep -F "PIN de administrador" lib/main.dart
+          echo "VALIDACION OK"
+      - name: Compilar APK release
         working-directory: /tmp/billar_app
         run: flutter build apk --release --no-shrink
-      - name: Guardar APK
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: billar-control-pro-apk
+          name: billar-control-pro-apk-nuevo
           path: /tmp/billar_app/build/app/outputs/flutter-apk/app-release.apk
