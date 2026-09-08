@@ -31,7 +31,6 @@ jobs:
           python3 tools/patch_final_rules.py
           python3 tools/patch_lock_rates.py
           python3 tools/patch_access_tv.py
-          python3 tools/patch_stability.py
           python3 tools/patch_runtime_safe.py
       - name: Permisos de red
         working-directory: /tmp/billar_app
@@ -44,7 +43,7 @@ jobs:
           flutter analyze --no-fatal-infos
       - name: Validar arranque seguro
         working-directory: /tmp/billar_app
-        run: python3 -c "from pathlib import Path; s=Path('lib/main.dart').read_text(); assert 'void main() async' not in s; assert 'WidgetsFlutterBinding.ensureInitialized();\n  runApp(const BillarApp());' in s; assert \"const List<double> defaultRates = [120, 120, 100, 100, 70];\" in s; print('SAFE OK')"
+        run: python3 -c "from pathlib import Path; s=Path('lib/main.dart').read_text(); assert 'void main() {' in s; assert 'WidgetsFlutterBinding.ensureInitialized();\n  runApp(const BillarApp());' in s; assert \"const List<double> defaultRates = [120, 120, 100, 100, 70];\" in s; assert 'mode = \'central\'' in s; print('SAFE OK')"
       - name: Compilar APK
         working-directory: /tmp/billar_app
         run: flutter build apk --release --no-shrink
