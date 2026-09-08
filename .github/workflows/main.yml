@@ -31,6 +31,8 @@ jobs:
         run: |
           cp /tmp/billar/main.dart /tmp/billar_app/lib/main.dart
           cp /tmp/billar/pubspec.yaml /tmp/billar_app/pubspec.yaml
+      - name: Agregar pantalla TV externa
+        run: python3 tools/patch_android_tv.py
       - name: Corregir compatibilidad Dart
         run: python3 tools/patch_compile.py
       - name: Aplicar correcciones de conexion LAN
@@ -75,13 +77,13 @@ jobs:
           for item in forbidden:
               if item in s:
                   raise SystemExit(f'FALLO: interfaz/control no permitido: {item}')
-          if "role:'tv'" not in s and 'role:\"tv\"' not in s:
-              raise SystemExit('FALLO: registro del monitor TV no encontrado')
+          if "MethodChannel('billar_control/tv')" not in s or "startTv" not in s:
+              raise SystemExit('FALLO: enlace TV por pantalla externa no encontrado')
           if "package:url_launcher/url_launcher.dart" not in s:
               raise SystemExit('FALLO: comprobador de actualizaciones no agregado')
           if "_checkForUpdates" not in s:
               raise SystemExit('FALLO: comprobador de actualizaciones no encontrado')
-          print('OK: administrador, tarifas bloqueadas, TV y actualizaciones presentes')
+          print('OK: administrador, tarifas bloqueadas, TV externa y actualizaciones presentes')
           PY
           dart format --output=none lib/main.dart
       - name: Configurar red local Android
