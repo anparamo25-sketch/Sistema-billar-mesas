@@ -35,6 +35,7 @@ jobs:
 
       - name: Configurar Android
         run: |
+          set -e
           python3 - <<'PY'
           from pathlib import Path
           gradle = Path('android/app/build.gradle.kts')
@@ -73,6 +74,7 @@ jobs:
           grep -F 'billar_control/tv' android/app/src/main/kotlin/com/billaresdonmiguel/billares_don_miguel/MainActivity.kt
           grep -F '"startTv"' android/app/src/main/kotlin/com/billaresdonmiguel/billares_don_miguel/MainActivity.kt
           grep -F '"updateTv"' android/app/src/main/kotlin/com/billaresdonmiguel/billares_don_miguel/MainActivity.kt
+          grep -F 'container.post' android/app/src/main/kotlin/com/billaresdonmiguel/billares_don_miguel/MainActivity.kt
           echo "VALIDACION OK"
 
       - name: Compilar APK release 122
