@@ -379,7 +379,7 @@ class _CentralState extends State<Central> {
     return '${(s ~/ 3600).toString().padLeft(2, '0')}:${((s % 3600) ~/ 60).toString().padLeft(2, '0')}:${(s % 60).toString().padLeft(2, '0')}';
   }
 
-  String money(double n) => 'C\\$ ${n.toStringAsFixed(2)}';
+  String money(double n) => 'C\$ ${n.toStringAsFixed(2)}';
 
   @override
   Widget build(BuildContext c) {
