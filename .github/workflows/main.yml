@@ -23,15 +23,12 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Crear proyecto Android con el mismo identificador de la app instalada
-        run: flutter create --platforms=android --org com.billaresdonmiguel --project-name billares_don_miguel .
-
-      - name: Restaurar integración nativa de TV
+      - name: Verificar proyecto Android y TV
         run: |
           set -e
           test -f android/app/src/main/kotlin/com/billaresdonmiguel/billares_don_miguel/MainActivity.kt
-          git checkout -- android/app/src/main/kotlin/com/billaresdonmiguel/billares_don_miguel/MainActivity.kt
           grep -F 'billar_control/tv' android/app/src/main/kotlin/com/billaresdonmiguel/billares_don_miguel/MainActivity.kt
+          grep -F 'container.post' android/app/src/main/kotlin/com/billaresdonmiguel/billares_don_miguel/MainActivity.kt
 
       - name: Configurar Android
         run: |
