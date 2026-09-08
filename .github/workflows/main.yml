@@ -43,6 +43,8 @@ jobs:
         run: python3 tools/patch_lock_rates.py
       - name: Corregir acceso y monitor TV
         run: python3 tools/patch_access_tv.py
+      - name: Agregar comprobacion de actualizaciones
+        run: python3 tools/patch_auto_update.py
       - name: Corregir simbolos de moneda Dart
         working-directory: /tmp/billar_app
         run: |
@@ -75,7 +77,11 @@ jobs:
                   raise SystemExit(f'FALLO: interfaz/control no permitido: {item}')
           if "role:'tv'" not in s and 'role:\"tv\"' not in s:
               raise SystemExit('FALLO: registro del monitor TV no encontrado')
-          print('OK: solo administrador, tarifas bloqueadas y monitor TV presente')
+          if "package:url_launcher/url_launcher.dart" not in s:
+              raise SystemExit('FALLO: comprobador de actualizaciones no agregado')
+          if "_checkForUpdates" not in s:
+              raise SystemExit('FALLO: comprobador de actualizaciones no encontrado')
+          print('OK: administrador, tarifas bloqueadas, TV y actualizaciones presentes')
           PY
           dart format --output=none lib/main.dart
       - name: Configurar red local Android
