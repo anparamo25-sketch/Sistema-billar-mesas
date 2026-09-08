@@ -1,0 +1,51 @@
+name: Build Billar Control Pro SAFE
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.5'
+          channel: stable
+          cache: true
+      - name: Crear proyecto Android limpio
+        run: flutter create --project-name=billar_control_pro --platforms=android /tmp/billar_app
+      - name: Copiar codigo
+        run: |
+          cp lib/main.dart /tmp/billar_app/lib/main.dart
+          cp pubspec.yaml /tmp/billar_app/pubspec.yaml
+      - name: Aplicar correcciones
+        run: |
+          python3 tools/patch_android_tv.py
+          python3 tools/patch_compile.py
+          python3 tools/patch_network.py
+          python3 tools/patch_billar_don_miguel.py
+          python3 tools/patch_final_rules.py
+          python3 tools/patch_lock_rates.py
+          python3 tools/patch_access_tv.py
+          python3 tools/patch_stability.py
+          python3 tools/patch_runtime_safe.py
+      - name: Permisos de red
+        working-directory: /tmp/billar_app
+        run: python3 -c "from pathlib import Path; p=Path('android/app/src/main/AndroidManifest.xml'); s=p.read_text(); m='<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\">'; s=s.replace(m,m+'\n    <uses-permission android:name=\"android.permission.INTERNET\" />\n    <uses-permission android:name=\"android.permission.ACCESS_NETWORK_STATE\" />') if 'android.permission.INTERNET' not in s else s; s=s.replace('<application','<application android:usesCleartextTraffic=\"true\"',1) if 'android:usesCleartextTraffic=' not in s else s; p.write_text(s)"
+      - name: Preparar dependencias
+        working-directory: /tmp/billar_app
+        run: |
+          rm -f test/widget_test.dart
+          flutter pub get
+          flutter analyze --no-fatal-infos
+      - name: Validar arranque seguro
+        working-directory: /tmp/billar_app
+        run: python3 -c "from pathlib import Path; s=Path('lib/main.dart').read_text(); assert 'void main() async' not in s; assert 'WidgetsFlutterBinding.ensureInitialized();\n  runApp(const BillarApp());' in s; assert \"const List<double> defaultRates = [120, 120, 100, 100, 70];\" in s; print('SAFE OK')"
+      - name: Compilar APK
+        working-directory: /tmp/billar_app
+        run: flutter build apk --release --no-shrink
+      - uses: actions/upload-artifact@v4
+        with:
+          name: billar-control-pro-apk-safe
+          path: /tmp/billar_app/build/app/outputs/flutter-apk/app-release.apk
